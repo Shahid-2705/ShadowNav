@@ -320,3 +320,57 @@ def test_estimator_declines_on_a_short_window():
     est = SpeedNetEstimator()
     speed, sigma = est(np.zeros((8, 3)), np.zeros((8, 3)))
     assert np.isnan(speed) and np.isnan(sigma)
+
+
+def test_sigma_scale_is_applied_at_inference():
+    """The calibration must actually reach the filter, not just the JSON.
+
+    An uncalibrated sigma made the filter over-trust a biased speed estimate:
+    NEES rose from 29-84 to 746-2650 and 180 s error got worse, not better.
+    """
+    from pathlib import Path
+
+    from shadownav.models.inference import DEFAULT_MODEL, SpeedNetEstimator
+
+    if not Path(DEFAULT_MODEL).exists():
+        pytest.skip("no trained model; run scripts/train_speednet.py")
+
+    est = SpeedNetEstimator()
+    assert est.sigma_scale >= 1.0, "calibration may widen sigma, never narrow it"
+
+    rng = np.random.default_rng(1)
+    acc = rng.normal(0, 0.3, (est.window, 3)) + np.array([0.0, 0.0, 9.81])
+    gyr = rng.normal(0, 0.05, (est.window, 3))
+    est.set_gravity(acc)
+    _, sigma_cal = est(acc, gyr)
+
+    est.sigma_scale = 1.0
+    _, sigma_raw = est(acc, gyr)
+    if sigma_raw < est.sigma_ceiling:      # not clipped, so the scale is visible
+        assert sigma_cal >= sigma_raw
+
+
+def test_sigma_scale_fitting_targets_nominal_coverage():
+    """Unit-check the fitting rule itself, independent of any trained model."""
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from train_speednet import fit_sigma_scale
+
+    class _Stub:
+        """Predicts 0 with sigma 1; true errors are drawn with std 3."""
+
+        def eval(self): ...
+
+        def __call__(self, x):
+            n = x.shape[0]
+            return torch.zeros(n), torch.zeros(n)   # log_var 0 -> sigma 1
+
+    rng = np.random.default_rng(7)
+    errs = torch.tensor(rng.normal(0, 3.0, 4000), dtype=torch.float32)
+    loader = [(torch.zeros(4000, 64, N_CHANNELS), -errs)]
+
+    scale = fit_sigma_scale(_Stub(), loader)
+    # Needs ~3x widening to make 1-sigma contain 68% of a std-3 error.
+    assert scale == pytest.approx(3.0, rel=0.15)
