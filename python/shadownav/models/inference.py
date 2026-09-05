@@ -53,6 +53,9 @@ class SpeedNetEstimator:
         self.std = np.asarray(blob["feature_std"].numpy(), dtype=float)
         self.window = int(blob["window"])
         self.variant = blob.get("variant", "unknown")
+        # Corrects the NLL head's systematic under-dispersion. Fitted on
+        # the val fold at training time; 1.0 when absent.
+        self.sigma_scale = float(blob.get("sigma_scale", 1.0))
         # Fixed for a drive: re-estimating gravity per window reintroduces the
         # short-window tilt error documented in baselines/naive.py.
         self.gravity = gravity
@@ -74,7 +77,7 @@ class SpeedNetEstimator:
         feat = (invariant_features(acc, gyr, up) - self.mean) / self.std
         x = torch.tensor(feat, dtype=torch.float32).unsqueeze(0)
         speed, log_var = self.model(x)
-        sigma = float(torch.exp(0.5 * log_var).item())
+        sigma = float(torch.exp(0.5 * log_var).item()) * self.sigma_scale
         return (
             float(speed.item()),
             float(np.clip(sigma, self.sigma_floor, self.sigma_ceiling)),

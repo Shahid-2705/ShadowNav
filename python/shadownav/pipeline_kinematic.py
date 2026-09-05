@@ -39,6 +39,12 @@ class KinematicPipelineConfig:
     filter: KinematicConfig = field(default_factory=KinematicConfig)
     fsm: FsmConfig = field(default_factory=FsmConfig)
     speed_window: int = 64
+    #: Run the learned speed head every N samples rather than every sample.
+    #: Vehicle speed does not change meaningfully in 100 ms, and at 10 Hz a
+    #: forward pass per sample costs 10x what it needs to. Left at 1 so the
+    #: committed comparisons stay like-for-like; 5 (i.e. 2 Hz) is the
+    #: deployment setting and should be ablated before shipping.
+    speed_stride: int = 1
     #: Below this alignment quality the car frame is not observable, so the
     #: forward/lateral accelerometer channels are not used. Heading integration
     #: and speed hold still work -- they need only the gyro's z axis, which the
@@ -212,7 +218,8 @@ def run(
         if cfg.use_ackermann:
             ekf.update_ackermann(float(yaw_rate[row]))
 
-        if speed_estimator is not None and row >= cfg.speed_window:
+        if (speed_estimator is not None and row >= cfg.speed_window
+                and row % max(1, cfg.speed_stride) == 0):
             lo = row - cfg.speed_window + 1
             s_hat, sigma = speed_estimator(acc[lo : row + 1], gyr[lo : row + 1])
             if np.isfinite(s_hat):

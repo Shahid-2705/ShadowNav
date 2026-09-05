@@ -75,6 +75,39 @@ def evaluate(model: SpeedNet, loader: DataLoader) -> dict[str, float]:
     }
 
 
+@torch.no_grad()
+def fit_sigma_scale(model: SpeedNet, loader: DataLoader,
+                    target_coverage: float = 0.6827) -> float:
+    """Scale the network's sigma so its stated confidence is honest.
+
+    The NLL head is systematically under-dispersed: measured 1-sigma coverage
+    is 0.19-0.51 against the 0.6827 a calibrated Gaussian gives. That is not
+    cosmetic. The sigma becomes the filter's measurement noise R, so an
+    over-confident head makes the filter over-trust a biased speed estimate --
+    measured as NEES rising from 29-84 to 746-2650 when the network was wired
+    in, and 180 s CRSE getting worse rather than better.
+
+    The fix is the same one used for the position covariance
+    (``evaluation/conformal.py``): one scalar, fitted on held-out data, chosen
+    so realised coverage matches nominal. Fitted on val, never on train.
+    """
+    model.eval()
+    errs, sigmas = [], []
+    for x, y in loader:
+        pred, log_var = model(x)
+        errs.append((pred - y).abs().numpy())
+        sigmas.append(torch.exp(0.5 * log_var).numpy())
+    e = np.concatenate(errs)
+    s_hat = np.concatenate(sigmas)
+    good = s_hat > 1e-9
+    if good.sum() < 20:
+        return 1.0
+    # The k at which the empirical coverage of |e| <= k*sigma hits the target.
+    ratio = np.sort(e[good] / s_hat[good])
+    idx = min(len(ratio) - 1, int(np.ceil(target_coverage * len(ratio))) - 1)
+    return float(max(1.0, ratio[max(idx, 0)]))
+
+
 def train_one(cfg: SpeedNetConfig, train: ds.SpeedDataset, val: ds.SpeedDataset,
               *, epochs: int, batch: int, lr: float, verbose: bool = True):
     seed_everything(DEFAULT_SEED)
@@ -167,6 +200,19 @@ def main(argv: list[str] | None = None) -> int:
         )
         te, _, _, _ = loaders(test, test, args.batch)
         test_stats = evaluate(model, te)
+        _, va_loader, _, _ = loaders(train, val, args.batch)
+        sigma_scale = fit_sigma_scale(model, va_loader)
+        test_stats["sigma_scale_fitted_on_val"] = sigma_scale
+        test_stats["coverage_1sigma_calibrated"] = float(
+            np.mean(
+                np.abs(np.concatenate([
+                    (model(x)[0] - y).detach().numpy() for x, y in te
+                ]))
+                <= sigma_scale * np.concatenate([
+                    torch.exp(0.5 * model(x)[1]).detach().numpy() for x, _ in te
+                ])
+            )
+        )
         results[name] = {
             "config": cfg.as_dict(),
             "n_parameters": model.n_parameters,
@@ -178,11 +224,11 @@ def main(argv: list[str] | None = None) -> int:
               f"cov1s {test_stats['coverage_1sigma']:.2f}")
         if test_stats["rmse"] < best_rmse:
             best_name, best_rmse = name, test_stats["rmse"]
-            best_bundle = (model, cfg, mean, std)
+            best_bundle = (model, cfg, mean, std, sigma_scale)
 
     if best_bundle is None:
         return 1
-    model, cfg, mean, std = best_bundle
+    model, cfg, mean, std, sigma_scale = best_bundle
     SHARED.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
@@ -197,6 +243,9 @@ def main(argv: list[str] | None = None) -> int:
             "window": train.window,
             "seed": DEFAULT_SEED,
             "variant": best_name,
+            # Multiplies the head's reported sigma so the filter is told the
+            # truth about how much to trust this measurement.
+            "sigma_scale": float(sigma_scale),
         },
         SHARED / "speednet.pt",
     )
@@ -219,6 +268,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(f"\nbest variant: {best_name} (test RMSE {best_rmse:.3f} m/s "
           f"vs trivial {naive_rmse:.3f})")
+    print(f"sigma scale fitted on val: {sigma_scale:.2f}x  "
+          f"(1-sigma coverage {results[best_name]['test']['coverage_1sigma']:.2f} "
+          f"-> {results[best_name]['test']['coverage_1sigma_calibrated']:.2f}, "
+          f"nominal 0.68)")
     print(f"saved {SHARED / 'speednet.pt'}")
     print(f"wrote {out}")
     return 0
