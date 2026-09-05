@@ -1,7 +1,12 @@
 package com.shadownav.app
 
 import android.Manifest
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.os.IBinder
 import android.graphics.Color
 import android.graphics.Typeface
 import android.hardware.SensorManager
@@ -35,16 +40,26 @@ import org.json.JSONObject
  * logging, so a number produced on a phone is only meaningful alongside the
  * rate it was produced at.
  */
-class MainActivity : AppCompatActivity(), SensorCapture.Listener, GnssCapture.Listener {
+class MainActivity : AppCompatActivity() {
 
     private lateinit var track: TrackView
     private lateinit var modeLabel: TextView
     private lateinit var readout: TextView
     private lateinit var diagnostics: TextView
 
-    private lateinit var sensors: SensorCapture
-    private lateinit var gnss: GnssCapture
-    private val engine = NavigationEngine()
+    /** The Activity owns none of the capture. It binds to the service, which
+     *  keeps running when this screen is gone. */
+    private var service: NavigationService? = null
+
+    private val connection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+            service = (binder as? NavigationService.LocalBinder)?.service
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            service = null
+        }
+    }
 
     private val ui = Handler(Looper.getMainLooper())
     private var running = false
@@ -65,15 +80,12 @@ class MainActivity : AppCompatActivity(), SensorCapture.Listener, GnssCapture.Li
         super.onCreate(savedInstanceState)
         setContentView(buildUi())
 
-        sensors = SensorCapture(
-            getSystemService(SENSOR_SERVICE) as SensorManager, this,
-        )
-        gnss = GnssCapture(this, this)
         track.conformalLambda = loadConformalLambda()
 
-        if (!sensors.hasRequiredSensors) {
+        val probe = SensorCapture(getSystemService(SENSOR_SERVICE) as SensorManager) { _, _, _ -> }
+        if (!probe.hasRequiredSensors) {
             modeLabel.text = "UNUSABLE DEVICE"
-            readout.text = sensors.describeSensors()
+            readout.text = probe.describeSensors()
             return
         }
         requestPermissionIfNeeded()
@@ -121,7 +133,7 @@ class MainActivity : AppCompatActivity(), SensorCapture.Listener, GnssCapture.Li
         val reset = Button(this).apply {
             text = "RESET"
             setOnClickListener {
-                engine.reset()
+                service?.engine?.reset()
                 track.clear()
             }
         }
@@ -141,7 +153,13 @@ class MainActivity : AppCompatActivity(), SensorCapture.Listener, GnssCapture.Li
     }
 
     private fun render() {
-        val s = engine.snapshot()
+        val svc = service ?: run {
+            modeLabel.text = "STARTING"
+            return
+        }
+        val sensors = svc.sensors
+        val gnss = svc.gnss
+        val s = svc.engine.snapshot()
         // Before the first fix the filter has not started, so the state machine
         // has not run either and still reads AIDED. Showing that would claim
         // GNSS aiding while there is no fix at all, which is exactly the kind
@@ -195,38 +213,6 @@ class MainActivity : AppCompatActivity(), SensorCapture.Listener, GnssCapture.Li
         }
 
         track.push(s)
-        logPeriodically(s)
-    }
-
-    /**
-     * One diagnostic line per second to logcat.
-     *
-     * Exists so a drive can be reviewed afterwards, and so the app can be
-     * verified over adb without reading the screen. The IMU rate leads the line
-     * deliberately: it is the variable every offline result depended on.
-     */
-    private fun logPeriodically(s: NavigationEngine.Snapshot) {
-        val now = System.currentTimeMillis()
-        if (now - lastLogMs < 1000) return
-        lastLogMs = now
-        val g = s.gnss
-        // The whole concatenation must be parenthesised before .format():
-        // in Kotlin `.format()` binds tighter than `+`, so without the parens
-        // only the final literal is formatted and it receives all 18 arguments
-        // -- a %d against a Double, which throws at runtime.
-        Log.i(
-            TAG,
-            ("imu=%.0fHz gap=%.0fms mode=%s fix=%b v=%.1f hdg=%.0f sigma=%.1f " +
-                "tsf=%.1f dr=%.0fm sats=%d/%d cn0=%.1f navic=%d/%d alignQ=%.2f " +
-                "gps=%d/%d ovr=%d").format(
-                    sensors.measuredAccelHz, sensors.maxGapMs, s.mode.name, s.hasFix,
-                    s.speedMs, Math.toDegrees(s.headingRad), s.sigmaM,
-                    s.timeSinceFixS, s.distanceSinceLossM,
-                    g.satellitesUsed, g.satellitesVisible, g.meanCn0,
-                    g.navicVisible, g.navicUsed, s.alignmentQuality,
-                    s.gpsAccepted, s.gpsRejected, s.gateOverrides,
-                ),
-        )
     }
 
     /** Read the conformal inflation shipped from the Python calibration. */
@@ -269,32 +255,43 @@ class MainActivity : AppCompatActivity(), SensorCapture.Listener, GnssCapture.Li
     private fun startCapture() {
         if (running) return
         running = true
-        sensors.start()
-        gnss.start()
+        NavigationService.start(this)
+        bindService(
+            Intent(this, NavigationService::class.java), connection, Context.BIND_AUTO_CREATE,
+        )
         ui.post(refresh)
+        // Background location is a separate, second-stage grant on Android 10+
+        // and can only be asked for once foreground location is already held.
+        maybeRequestBackgroundLocation()
+    }
+
+    /** Ask for background location so the service keeps receiving fixes when
+     *  the screen is off. Declined is survivable: the service still runs, and
+     *  Android delivers fixes while the app is visible. */
+    private fun maybeRequestBackgroundLocation() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        val held = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!held) {
+            ActivityCompat.requestPermissions(
+                this, arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION), REQ_BACKGROUND,
+            )
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         running = false
         ui.removeCallbacks(refresh)
-        if (this::sensors.isInitialized) sensors.stop()
-        if (this::gnss.isInitialized) gnss.stop()
+        // Unbind only. The service deliberately keeps running: closing the
+        // screen mid-tunnel must not end the drive. Stop it from the
+        // notification, or with `adb shell am stopservice`.
+        runCatching { unbindService(connection) }
     }
-
-    // ------------------------------------------------------------ callbacks
-
-    override fun onImuSample(timestampNs: Long, accel: FloatArray?, gyro: FloatArray?) {
-        if (accel == null || gyro == null) return
-        engine.onImuSample(timestampNs, accel, gyro)
-    }
-
-    override fun onFix(location: Location) = engine.onFix(location)
-
-    override fun onStatus(snapshot: GnssCapture.Snapshot) = engine.onStatus(snapshot)
 
     companion object {
         private const val REQ_LOCATION = 1001
-        private const val TAG = "ShadowNav"
+        private const val REQ_BACKGROUND = 1002
     }
 }

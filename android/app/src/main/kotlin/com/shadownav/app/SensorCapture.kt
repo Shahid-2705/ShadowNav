@@ -30,6 +30,22 @@ class SensorCapture(
     private val listener: Listener,
 ) : SensorEventListener {
 
+    /** Convenience for callers that only want to query hardware capability
+     *  without subscribing, such as the Activity's startup check. */
+    constructor(
+        sensorManager: SensorManager,
+        onSample: (Long, FloatArray?, FloatArray?) -> Unit,
+    ) : this(
+        sensorManager,
+        object : Listener {
+            override fun onImuSample(
+                timestampNs: Long,
+                accel: FloatArray?,
+                gyro: FloatArray?,
+            ) = onSample(timestampNs, accel, gyro)
+        },
+    )
+
     interface Listener {
         /**
          * @param timestampNs the sensor's own event timestamp, not wall clock.

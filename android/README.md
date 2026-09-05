@@ -141,6 +141,21 @@ precisely the confident-and-wrong display this project exists to avoid. It now
 shows `ACQUIRING` in grey until a fix exists. The mode label also rendered
 underneath the status bar; window insets are applied now.
 
+### A third bug: collection stopped when the app left the screen
+
+Sensor capture and the filter lived in the Activity. The moment the user
+switched apps, Android froze the process and collection stopped dead after two
+minutes. For something whose entire purpose is surviving a tunnel, losing state
+because the screen turned off is not a limitation, it is a defect.
+
+`NavigationService` is now a foreground service holding the capture and the
+engine; the Activity binds to it purely for display and unbinds without stopping
+it. Verified on device: with the launcher in the foreground, the service reports
+`isForeground=true types=0x00000008` and logging continues at 401 Hz.
+
+This is also why a notification appears. It is the platform's required price for
+background location, and it doubles as a live readout visible without unlocking.
+
 ### Not yet measured
 
 No GNSS fix was obtained — the test was indoors, `sats 0/0`. Everything

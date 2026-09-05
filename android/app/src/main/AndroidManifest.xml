@@ -16,6 +16,20 @@
          so asking for the maximum is not gold-plating. -->
     <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
 
+    <!-- A foreground service is the only reliable way to keep sensor and
+         location callbacks alive on modern Android. Without it the first
+         hardware test stopped collecting two minutes in, the moment the user
+         switched apps. For something whose purpose is surviving a tunnel,
+         losing state because the screen turned off is a defect. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Needed for the service to keep receiving fixes while backgrounded.
+         Requested separately and only after foreground location is granted,
+         which is what Android requires. -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
     <!-- Declared but not required: the app must run on a device with no
          gyroscope-quality guarantee, and it degrades rather than refusing. -->
     <uses-feature
@@ -33,6 +47,11 @@
         android:label="ShadowNav"
         android:supportsRtl="true"
         android:theme="@style/Theme.ShadowNav">
+
+        <service
+            android:name=".NavigationService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
 
         <activity
             android:name=".MainActivity"
