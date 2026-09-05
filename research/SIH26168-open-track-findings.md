@@ -329,7 +329,35 @@ Winner lists are public for 2023–2025 (team name, PS ID, college, prize) but c
 
 Plus: the synchronised folder is misspelled in the repo — `Synchronised V abd S datasets` — which will break naive path strings.
 
-**Rates:** VBOX CAN logger and GPS antenna both 10 Hz. Smartphone (AndroSensor) 10 Hz sampling with a **1 Hz GPS update** — GPS lat/lon rows repeat in blocks of ~10 and must not be treated as independent fixes. Uniform across regions; no per-country variation.
+**Rates:** VBOX CAN logger and GPS antenna both 10 Hz. Smartphone (AndroSensor) 10 Hz sampling.
+
+> ### ⚠ CORRECTION (2026-09-05) — the 1 Hz GPS claim is wrong
+>
+> This section previously stated a **1 Hz GPS update** with rows repeating in blocks of ~10. That was read from the paper, not measured. Measuring all 72 S-side files directly (`python/scripts/audit_gps_rate.py`, over 29.7 h and 1,065,249 rows) gives:
+>
+> | | Claimed here | Measured |
+> |---|---|---|
+> | IMU sample rate | 10 Hz | **10.00 Hz** ✓ |
+> | GPS fix period | 1 s | **9.0 s** median (range 1–13 s) |
+> | Rows per fix | ~10 | **89.4** |
+> | Sessions consistent with 1 Hz | all | **3 / 79** |
+> | Vehicle travel between fixes | ~2.8 m | **27.1 m** median, 70 m max |
+>
+> The whole dataset contains only **14,212 real position observations**. *(Confidence: high — measured, seeded, reproducible; artifact at `eval/results/gps_rate_audit.json`.)*
+>
+> **Why the original reading was plausible and still wrong:** a change-detection test on *latitude alone* reports blocks of ~10 on some files. On a near-east/west drive latitude is constant to 6 decimal places for scores of rows while longitude advances at every fix, so latitude-only detection is wrong by an order of magnitude. Detection must use the whole GPS tuple.
+>
+> **Consequences for evaluation.** A 10 s synthetic outage suppresses roughly *one* real fix and a 30 s outage roughly three. Scoring at 10 Hz against interpolated truth reports interpolation error as estimator error, and between fixes 27 m apart on a curve that is metres. So: score only at rows carrying a real fix, report the actual elapsed time (it can exceed the requested horizon by up to one fix period), and report the truth gap beside every number.
+
+**Three further defects, none previously recorded** *(all measured 2026-09-05; each is now a defended behaviour with a regression test in `python/tests/test_repair.py`)*:
+
+1. **Excel date corruption of the satellite column — 12 of 72 files, 2,118 rows.** Values like `Dec-14`, `Nov-16`, `10-Dec` are Excel's date autocorrect applied to `"12 / 14"`, `"11 / 16"`, `"10 / 12"`: the CSVs were opened in Excel and re-saved. S-Vta28 is 19% corrupted. **The corruption is selective in the worst possible way** — Excel only converts what it can read as a date, needing the first number ≤ 12, so it destroys exactly the rows where fewer than 13 satellites were in the fix, i.e. the degraded-GNSS rows this PS is about. Dropping them biases the dataset away from the condition under test. The transform is exactly invertible (`MMM-DD` → `month / DD`, `DD-MMM` → `DD / month`) and all 48 distinct corrupted forms present invert to `used ≤ visible`, the independent invariant confirming the inversion.
+2. **Concatenated recording sessions — 5 files.** `TIME SINCE START` resets toward zero while wall-clock `DATE` continues forward (S-S2: 186311 ms → 10 ms while the date advances 12:06:58.041 → 12:06:59.249). Separate AndroSensor recordings concatenated into one CSV. Split them; integrating across the boundary injects a fabricated 186-second gap. 72 files yield **79 sessions**.
+3. **Duplicate timestamp rows — 7 files.** S-Vtb1 has 5,456 duplicate-timestamp pairs across 32,459 rows (17%); 5,370 of them are byte-identical duplicates of the preceding row, so deduplication is safe.
+
+Plus two header hazards not listed below: **CRLF line endings**, and an internal trailing space inside `ORIENTATION (Roll )`.
+
+Uniform across regions; no per-country variation.
 
 **The country question dissolves:** `V-` (ECU) data is **England-only**. Only `S-` (smartphone) data spans England, France and Nigeria — which is the relevant half for a smartphone-only project. Phones used: Huawei P20 Pro, Motorola moto G7 Power, Blackberry Priv, across four vehicles.
 

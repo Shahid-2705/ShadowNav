@@ -146,7 +146,19 @@ Each claim below is the *narrowed, defensible* version that survived verificatio
 
 ## 4. Build Plan
 
-**Phase 0 — Data (day 1–2).** ✦ Handle the IO-VNBD gotchas up front: column names carry a leading space (`skipinitialspace=True`); files are **latin-1**, not UTF-8; `GPS SATELLITES IN RANGE` is a string like `"27 / 28"`; the accelerator-pedal header is wrong (it's % activation); the synchronised folder is misspelled `Synchronised V abd S datasets`; CSVs are **Git LFS** (use `media.githubusercontent.com/media/...`). Smartphone data is 10 Hz sampling with a **1 Hz GPS update** — GPS rows repeat in blocks of ~10 and are not independent fixes. Run a deliberately naive double-integration baseline to document the drift floor.
+**Phase 0 — Data (day 1–2).** ✦ Handle the IO-VNBD gotchas up front: column names carry a leading space (`skipinitialspace=True`); files are **latin-1**, not UTF-8; `GPS SATELLITES IN RANGE` is a string like `"27 / 28"`; the accelerator-pedal header is wrong (it's % activation); the synchronised folder is misspelled `Synchronised V abd S datasets`; CSVs are **Git LFS** (use `media.githubusercontent.com/media/...`). ~~Smartphone data is 10 Hz sampling with a **1 Hz GPS update** — GPS rows repeat in blocks of ~10~~ — **corrected 2026-09-05, measured not assumed:** IMU is 10.00 Hz but the **GPS fix period is a median of 9.0 s** (89.4 rows per fix; only 3 of 79 sessions look like 1 Hz), i.e. ~27 m of travel between consecutive fixes and just **14,212 real position observations in the whole dataset**. Score only at rows carrying a real fix; report actual elapsed time and the truth gap. Three further undocumented defects — Excel-date corruption of the satellite column (12 files, biased toward exactly the low-satellite rows we care about), concatenated recording sessions (5 files), duplicate-timestamp rows (7 files) — are repaired in `python/shadownav/data/repair.py`. See the corrected Track H.
+
+**Phase 0 status: COMPLETE (2026-09-05).** Drift floor documented at `eval/results/baseline_naive.json` — naive unaided strapdown, 79 sessions, 991 scored outages:
+
+| Horizon | CRSE median | CRSE p90 | CTE median | Drift median |
+|---|---|---|---|---|
+| 10 s | 310 m | 639 m | 113 m | 229% |
+| 30 s | 1,725 m | 3,690 m | 906 m | 444% |
+| 60 s | 6,856 m | 13,729 m | 3,996 m | 918% |
+| 120 s | 26,688 m | 52,997 m | 14,201 m | 1,844% |
+| 180 s | 63,408 m | 112,594 m | 39,385 m | 2,553% |
+
+Consistent across train/val/test folds. Comparable to the ">1000% error" a competitor documents for the same construction (dossier §10, tannaakshat447). Every later claim is measured against this.
 
 ✦ **Constraint to document now:** the WhONet benchmark **cannot be reproduced smartphone-only** — its splits are `V-` (ECU, England-only), and `V-St6`, `V-St7`, `V-S3a` (three of nine long-outage sequences) have no smartphone counterpart. **Define and publish your own S-side split.** All evaluation uses synthetic masking; the dataset's real dropouts have no ground truth and exist only as exclusions.
 
@@ -209,4 +221,6 @@ Each claim below is the *narrowed, defensible* version that survived verificatio
 
 ## Status
 
-Planning revision 2 complete, 2026-09-05. Research complete across nine tracks. Demo UI built ([demo/gnss-demo.html](demo/gnss-demo.html)). No estimator implementation started yet.
+Planning revision 2 complete, 2026-09-05. Research complete across nine tracks. Demo UI built ([demo/gnss-demo.html](demo/gnss-demo.html)).
+
+**Phase 0 (data) complete, 2026-09-05** — see [python/README.md](python/README.md). Loader with regression tests for every documented and newly-found dataset hazard, published S-side split, synthetic-masking harness, and the naive drift floor. Four dataset findings not in the research dossiers were fed back into Track H. Estimator implementation (Phase 1) is next.

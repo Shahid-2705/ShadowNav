@@ -1,0 +1,75 @@
+# ShadowNav S-side evaluation split
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# The WhONet benchmark cannot be reproduced smartphone-only. Its splits are all
+# V- (vehicle-ECU) sequences, and V-St6, V-St7 and V-S3a -- three of its nine
+# long-outage benchmark sequences -- have no smartphone counterpart at all.
+# See PLAN.md:151 and research/SIH26168-open-track-findings.md Track H.
+#
+# So this project defines and publishes its own split. Any comparison against
+# WhONet's published figures is therefore indicative of shape only, never
+# like-for-like: WhONet additionally uses wheel-speed sensors, which this
+# project deliberately does not read.
+#
+# GROUPING RULE
+# -------------
+# Split by route/driver group, never by individual sequence. The Vta group
+# alone is 30 sequences over what the dataset paper describes as repeated runs;
+# splitting those randomly would put near-identical stretches of the same road
+# in both train and test and inflate every number.
+#
+#   M    (Driver B)  1 sequence
+#   S    (Driver A)  6 sequences
+#   Vfa  (Driver E)  2 sequences
+#   Vta  (Driver E) 30 sequences
+#   Vtb  (Driver E) 12 sequences
+#   Vw   (Driver E) 20 sequences
+#   Y    (Driver D)  1 sequence
+#
+# Test holds the three groups from the drivers who appear nowhere else (M, S,
+# Y), so the test set measures cross-driver and cross-route generalisation
+# rather than memorisation. That is a harder split than a random one and it is
+# chosen deliberately: PLAN.md:190 lists small-dataset overfitting as a top
+# risk, and AVNet's own limitation is a rigidly-fixed phone in one location.
+#
+# KNOWN IMBALANCE, STATED RATHER THAN HIDDEN
+# ------------------------------------------
+# Train is dominated by one driver (E). Test is small in sequence count but
+# includes S-M (105974 rows) and S-Y1 (70285 rows), the two longest files in
+# the dataset, so it is not small in duration. Report per-group results, never
+# only the pooled number.
+
+version: 1
+created: "2026-09-05"
+dataset: IO-VNBD
+dataset_licence: "CC BY 4.0 via Data in Brief (PMC7907232)"
+dataset_citation: >-
+  Onyekpe, Palade, Kanarachos, Szkolnik. IO-VNBD: Inertial and Odometry
+  benchmark dataset for ground vehicle positioning. arXiv:2005.01701
+side: S            # smartphone only; V- sequences are out of scope (PLAN.md:13)
+
+# Evaluation protocol
+protocol:
+  masking: synthetic
+  masking_note: >-
+    All evaluation uses synthetic GNSS masking. IO-VNBD's real receiver dropouts
+    are documented only as row-index exclusions inside the zip archives, carry no
+    valid ground truth while they last, and are sliced around as corrupt by the
+    dataset author's own code. There is nothing to score against during one.
+  horizons_s: [10, 30, 60, 120, 180]
+  outages_per_sequence: 5
+  seed: 20260905
+  min_speed_ms: 1.0
+  guard_s: 5.0
+  truth_note: >-
+    Measured GPS fix period is a median of 9.0 s across the dataset, not the 1 Hz
+    recorded in Track H -- roughly 27 m of vehicle travel between consecutive
+    fixes. Metrics are therefore evaluated only at rows carrying a real fix, and
+    each result reports the actual elapsed time, which may exceed the requested
+    horizon by up to one fix period. See scripts/audit_gps_rate.py.
+
+groups:
+  train: [Vta, Vtb]
+  val:   [Vw, Vfa]
+  test:  [S, M, Y]

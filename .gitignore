@@ -1,0 +1,27 @@
+# Raw dataset — fetched by `python -m shadownav.data.fetch`, never committed.
+# IO-VNBD is CC BY 4.0 via its Data in Brief version; we redistribute nothing.
+/data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Generated evaluation artifacts (numbers live in eval/results/*.json, which IS committed)
+/eval/results/**/*.png
+/eval/results/**/*.npz
+
+# Android
+/android/**/build/
+/android/.gradle/
+/android/local.properties
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
