@@ -41,14 +41,22 @@ class IOVNBDScopeError(IOVNBDError):
     """The file is real but out of scope for a smartphone-only system."""
 
 
-#: The GPS tuple. Two consecutive rows sharing all of these carry the same fix.
+#: Columns that define a distinct GPS fix: the horizontal position solution,
+#: and nothing else.
+#:
+#: Derived fields must NOT be included. Course over ground and reported accuracy
+#: jitter every sample while the vehicle is stationary, and including them marks
+#: every standstill row as a new fix -- S-Y1 reported 785 "fixes" that way, most
+#: of them at zero speed with the vehicle not moving at all, which silently
+#: inflated the apparent fix rate and made the filter believe it was being
+#: corrected when it was not.
+#:
+#: Latitude alone is equally wrong in the other direction: on a near-east/west
+#: drive it is constant to 6 decimal places for scores of rows while longitude
+#: advances at every fix. The pair is the right signal.
 _GPS_FIX_COLUMNS = (
     "gps_lat_deg",
     "gps_lon_deg",
-    "gps_alt_m",
-    "gps_speed_kmh",
-    "gps_accuracy_m",
-    "gps_orientation_deg",
 )
 
 

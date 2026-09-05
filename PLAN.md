@@ -162,7 +162,25 @@ Consistent across train/val/test folds. Comparable to the ">1000% error" a compe
 
 ✦ **Constraint to document now:** the WhONet benchmark **cannot be reproduced smartphone-only** — its splits are `V-` (ECU, England-only), and `V-St6`, `V-St7`, `V-S3a` (three of nine long-outage sequences) have no smartphone counterpart. **Define and publish your own S-side split.** All evaluation uses synthetic masking; the dataset's real dropouts have no ground truth and exist only as exclusions.
 
-**Phase 1 — MVP (day 2–5).** CNN+GRU front end → nonholonomic InEKF → learned Q/R → blackout/blend FSM → ✦ chi-square innovation gate (cheap, no new sensor, closes a real gap).
+**Phase 1 — MVP (day 2–5).** ~~CNN+GRU front end → nonholonomic InEKF → learned Q/R → blackout/blend FSM → chi-square innovation gate.~~
+
+**Phase 1 status: filter core COMPLETE (2026-09-05), learned front end NOT started.** Results at `eval/results/kinematic.json` — 79 sessions, 991 outages, same split, seed and windows as the floor:
+
+| Horizon | Naive floor | MVP | Gain | Drift | NEES |
+|---|---|---|---|---|---|
+| 10 s | 310 m | **189 m** | 1.6× | 108% | 132 |
+| 30 s | 1,725 m | **372 m** | 4.6× | 100% | 132 |
+| 60 s | 6,856 m | **658 m** | 10.4× | 88% | 120 |
+| 120 s | 26,688 m | **1,056 m** | 25.3× | 84% | 96 |
+| 180 s | 63,408 m | **1,463 m** | 43.4× | 77% | 89 |
+
+✦ **Architecture change forced by measurement.** The 21-state strapdown InEKF is built and its Jacobians are verified against finite differences (`python/tests/test_ekf.py`), but it **cannot be used on IO-VNBD**: the smartphone side logs at 10 Hz, so the accelerometer is aliased, and with GNSS fixes 9 s apart there are ~90 free double-integration steps between corrections. Run on this data it reached 5×10⁴ m/s. The deployed MVP is a **5-state 2D kinematic filter** — gyro-integrated heading plus held speed — which never double-integrates acceleration. Keep the strapdown for the Android app, where the IMU runs at 100–200 Hz.
+
+✦ **Two planned features measurably *hurt* on this data and are defaulted off.** Ablation over 152 outages: enabling `L_cent` and accelerometer-driven speed raised CRSE at every horizon (180 s: 924 m → 1,530 m) and worsened median NEES from 28–74 to 103–548. Both read the accelerometer's *horizontal* channels, which need the device-to-car alignment and are aliased at 10 Hz. **`L_cent` is not refuted — it is untestable on 10 Hz logs.** Re-run the ablation on 100–200 Hz Android data before drawing any conclusion about the technique. This independently reproduces Agastya's ablation (§10): unconstrained correction is worse than the classical baseline; only the gated version wins.
+
+✦ **Device-to-car alignment is a prerequisite, not a refinement.** Applying the nonholonomic constraint in the phone's frame rather than the car's produced 1,312 m at a 10 s horizon — four times *worse* than the unaided strapdown. Alignment is observable in ~84% of runs; where it is not (a straight, constant-speed approach — the degenerate case at §6.2) the constraint is disabled rather than applied wrongly.
+
+**Remaining Phase 1 gap — the dominant error term.** Drift is still 77–108%, far from the AVNet 0.64% reference and worse than PathPulse's claimed 10%. The residual is **speed staleness**: speed is held from the last fix, which can be 9 s before the outage even starts, then held through it. Closing this is exactly the job of the CNN+GRU forward-speed front end, which is specified and wired (`SpeedEstimator` protocol, `pipeline_kinematic.run(speed_estimator=...)`) but **not yet trained**. Highest-value remaining item.
 
 **Phase 2 — Differentiators, ✦ reordered by verified value-per-hour:**
 1. `L_cent` centripetal loss — highest value, lowest risk
