@@ -22,6 +22,13 @@ junit = { group = "junit", name = "junit", version.ref = "junit" }
 # TextureView API. See plans/shadownav-3d-mvp-web-deck.md Step 1 and its
 # anti-patterns section for the full decision record.
 filament-android = { group = "com.google.android.filament", name = "filament-android", version.ref = "filament" }
+# Runtime material compiler (Google's own MaterialBuilder API) -- lets us
+# compile a simple UNLIT material on-device with plain Kotlin, with zero
+# dependency on the `matc` build-time toolchain (which requires building
+# Filament's own C++ project from source and is impractical here). See
+# google/filament's sample-material-builder for the reference usage this
+# project's OrbMaterial.kt is based on.
+filamat-android = { group = "com.google.android.filament", name = "filamat-android", version.ref = "filament" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

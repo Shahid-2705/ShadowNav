@@ -27,7 +27,6 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import com.shadownav.core.GnssMode
 import org.json.JSONObject
 
 /**
@@ -46,6 +45,9 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var track: TrackView
     private lateinit var chip: StatusChip
+    private lateinit var header: LinearLayout
+    private var orb: FilamentOrbView? = null
+    private lateinit var capabilityProbe: DeviceCapabilityProbe
     private lateinit var subtitle: TextView
     private lateinit var speed: Metric
     private lateinit var heading: Metric
@@ -58,6 +60,11 @@ class MainActivity : AppCompatActivity() {
 
     private var service: NavigationService? = null
     private var recorder: TripRecorder? = null
+
+    /** Blueprint Step 2's UI-layer debug harness (FIX-7): when set, `render()`
+     *  drives the chip/orb from this instead of the real engine snapshot.
+     *  Never written to by anything touching NavigationEngine. */
+    private var debugStateOverride: UiSignalState? = null
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -85,13 +92,15 @@ class MainActivity : AppCompatActivity() {
         setContentView(buildUi())
         track.conformalLambda = loadConformalLambda()
 
-        // Step 1 of the 3D-rendering blueprint: log-only for now, no UI or
-        // engine change yet. This is what Step 1's "on-device smoke
-        // benchmark" exit criterion actually runs -- once a device is
-        // reachable, `adb logcat -s ShadowNav` shows the measured tier.
-        // Step 2 wires the result into an actual RenderTier-gated view.
-        DeviceCapabilityProbe(this).resolveTier { tier ->
+        // Blueprint Step 2: resolve the render tier and, if the device
+        // warrants it, attach the Filament orb next to the (always-present,
+        // always-accessible) StatusChip. CANVAS_2D devices get no orb at
+        // all -- zero regression to the pre-3D layout, per RenderTier's
+        // contract.
+        capabilityProbe = DeviceCapabilityProbe(this)
+        capabilityProbe.resolveTier { tier ->
             Log.i("ShadowNav", "capability probe -> $tier")
+            attachOrbIfWarranted(tier)
         }
 
         val probe = SensorCapture(getSystemService(SENSOR_SERVICE) as SensorManager) { _, _, _ -> }
@@ -118,7 +127,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         // -- header ------------------------------------------------------
-        val header = LinearLayout(this).apply {
+        header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(18f), dp(14f), dp(18f), dp(8f))
@@ -139,7 +148,16 @@ class MainActivity : AppCompatActivity() {
             setTextColor(Palette.DIM)
         }
         titles.addView(subtitle)
-        chip = StatusChip(this).apply { set("ACQUIRING", Palette.SLATE) }
+        chip = StatusChip(this).apply {
+            set("ACQUIRING", Palette.SLATE)
+            // Blueprint Step 2's UI-layer debug harness (FIX-7): cycles the
+            // orb and chip through every UiSignalState without touching
+            // NavigationEngine at all -- DEGRADED in particular is not
+            // reachable from the real engine via the SIMULATE TUNNEL button
+            // (it depends on live satellite/C-N0 values), so this is the
+            // only way to see it rendered short of live weak-signal driving.
+            setOnLongClickListener { debugCycleState(); true }
+        }
         header.addView(titles)
         header.addView(chip)
         root.addView(header)
@@ -244,6 +262,34 @@ class MainActivity : AppCompatActivity() {
         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
     ).apply { topMargin = dp(10f) }
 
+    /** Blueprint Step 2: attach the Filament orb to the header, but only for
+     *  a device the capability probe considers worth it. CANVAS_2D leaves
+     *  the header exactly as it was before this feature existed. */
+    private fun attachOrbIfWarranted(tier: RenderTier) {
+        if (tier == RenderTier.Canvas2D || orb != null) return
+        val size = dp(44f)
+        val view = FilamentOrbView(this).apply {
+            reducedQuality = tier == RenderTier.Reduced3D
+            layoutParams = LinearLayout.LayoutParams(size, size).apply { marginStart = dp(10f) }
+        }
+        header.addView(view)
+        orb = view
+    }
+
+    /** Cycles the chip/orb through every [UiSignalState] on a long-press,
+     *  bypassing NavigationEngine entirely (blueprint Step 2, FIX-7) --
+     *  DEGRADED specifically has no reachable path from the real engine via
+     *  the SIMULATE TUNNEL button. One press past the last state returns to
+     *  the live engine snapshot; each state is held until the next press. */
+    private fun debugCycleState() {
+        val states = UiSignalState.entries
+        val currentIndex = debugStateOverride?.let { states.indexOf(it) } ?: -1
+        val nextIndex = currentIndex + 1
+        debugStateOverride = states.getOrNull(nextIndex)
+        val label = debugStateOverride?.name ?: "LIVE"
+        Toast.makeText(this, "debug state: $label", Toast.LENGTH_SHORT).show()
+    }
+
     // -------------------------------------------------------------- render
 
     private fun render() {
@@ -252,18 +298,14 @@ class MainActivity : AppCompatActivity() {
         val gnss = svc.gnss
         val s = svc.engine.snapshot()
 
-        // Before the first fix the filter has not started, so the state machine
-        // still reads its initial value. Showing AIDED there would assert GNSS
+        // uiState() is shared with FilamentOrbView (blueprint Step 2, FIX-6)
+        // so the chip and the orb can never disagree about what's true --
+        // before the first fix, in particular, mode still reads its initial
+        // AIDED value, and showing that as locked/aided would assert GNSS
         // aiding with zero satellites.
-        val (chipText, chipColour) = when {
-            !s.hasFix -> "ACQUIRING" to Palette.SLATE
-            s.simulatedBlackout -> "SIMULATED BLACKOUT" to Palette.MAGENTA
-            s.mode == GnssMode.AIDED -> "GNSS AIDED" to Palette.CYAN
-            s.mode == GnssMode.DEGRADED -> "DEGRADED" to Palette.AMBER
-            s.mode == GnssMode.REACQUIRING -> "REACQUIRING" to Palette.AMBER
-            else -> "DEAD RECKONING" to Palette.MAGENTA
-        }
-        chip.set(chipText, chipColour)
+        val signal = debugStateOverride ?: uiState(s)
+        chip.set(signal.label, signal.colour)
+        orb?.push(signal)
 
         subtitle.text = when {
             !s.hasFix -> "waiting for a fix  ·  %d satellites visible".format(

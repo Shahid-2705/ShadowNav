@@ -56,6 +56,13 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    // `.filamat` is Filament's own compiled-material binary format; leaving
+    // it compressed in the APK means decompressing it on every cold load for
+    // no benefit (it's already a dense binary), per Filament's own samples.
+    androidResources {
+        noCompress += "filamat"
+    }
+
     kotlinOptions {
         jvmTarget = "17"
     }
@@ -67,5 +74,10 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.filament.android)
+    // filamat-android (the runtime shader-compiler toolchain, measured at
+    // ~8.9 MB) is deliberately NOT a dependency of the shipped app -- it was
+    // used once, temporarily, to generate assets/materials/orb.filamat (see
+    // that file's header comment / PLAN.md), then removed. Re-add only if a
+    // new material needs compiling, and remove again afterwards.
     testImplementation(libs.junit)
 }
