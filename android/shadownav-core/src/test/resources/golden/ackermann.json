@@ -1,0 +1,41 @@
+{
+ "description": "Ackermann curvature and friction bounds",
+ "cases": [
+  {
+   "speed_in": 0.2,
+   "gyro_z": 0.5,
+   "applied": true,
+   "speed_out": 0.992857142857
+  },
+  {
+   "speed_in": 20.0,
+   "gyro_z": 0.5,
+   "applied": true,
+   "speed_out": 17.84532
+  },
+  {
+   "speed_in": 40.0,
+   "gyro_z": 0.5,
+   "applied": true,
+   "speed_out": 27.84532
+  },
+  {
+   "speed_in": 10.0,
+   "gyro_z": 0.2,
+   "applied": false,
+   "speed_out": 10.0
+  },
+  {
+   "speed_in": 10.0,
+   "gyro_z": 0.001,
+   "applied": false,
+   "speed_out": 10.0
+  },
+  {
+   "speed_in": 2.0,
+   "gyro_z": 3.0,
+   "applied": false,
+   "speed_out": 2.0
+  }
+ ]
+}

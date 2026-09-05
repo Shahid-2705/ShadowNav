@@ -19,6 +19,7 @@ venv/
 # Android
 /android/**/build/
 /android/.gradle/
+/android/.kotlin/
 /android/local.properties
 
 # Editors / OS

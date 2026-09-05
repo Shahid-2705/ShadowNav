@@ -1,0 +1,42 @@
+{
+ "description": "position, speed, course, centripetal and Ackermann updates",
+ "init": {
+  "east": 0.0,
+  "north": 0.0,
+  "heading": 0.1,
+  "speed": 8.0
+ },
+ "log": [
+  {
+   "step": 0,
+   "position_accepted": true
+  },
+  {
+   "step": 10,
+   "position_accepted": true
+  },
+  {
+   "step": 20,
+   "position_accepted": false
+  }
+ ],
+ "ackermann_applied": false,
+ "state": [
+  7.557982781004,
+  20.530379338847,
+  0.100639640008,
+  8.949941645548,
+  0.001773421087
+ ],
+ "cov_diag": [
+  7.304842021191,
+  6.683002335372,
+  0.002793660738,
+  0.239079461918,
+  9.508135e-05
+ ],
+ "n_gps_accepted": 2,
+ "n_gps_rejected": 1,
+ "n_centripetal": 1,
+ "n_ackermann": 0
+}
