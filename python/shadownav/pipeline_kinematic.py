@@ -74,6 +74,10 @@ class KinematicPipelineConfig:
     #: the gated version wins (dossier section 10).
     use_centripetal: bool = False
     use_accel_speed: bool = False
+    #: Ackermann curvature and friction bounds. Unlike the two above these
+    #: read only the gyroscope's vertical component, which is available
+    #: without a full device-to-car alignment, so they are on by default.
+    use_ackermann: bool = True
 
 
 @dataclass(frozen=True)
@@ -89,6 +93,7 @@ class Trajectory:
     n_gps_rejected: int
     n_gate_overrides: int
     n_centripetal: int
+    n_ackermann: int
     alignment_quality: float
     aligned: bool
 
@@ -204,6 +209,8 @@ def run(
 
         if cfg.use_centripetal and a_lat is not None:
             ekf.update_centripetal(float(a_lat[row]), float(yaw_rate[row]))
+        if cfg.use_ackermann:
+            ekf.update_ackermann(float(yaw_rate[row]))
 
         if speed_estimator is not None and row >= cfg.speed_window:
             lo = row - cfg.speed_window + 1
@@ -256,5 +263,6 @@ def run(
         mode=out_mode, cov_xy=out_cov,
         n_gps_accepted=d.n_gps_accepted, n_gps_rejected=d.n_gps_rejected,
         n_gate_overrides=d.n_gate_overrides, n_centripetal=d.n_centripetal,
+        n_ackermann=d.n_ackermann,
         alignment_quality=alignment.quality, aligned=aligned,
     )

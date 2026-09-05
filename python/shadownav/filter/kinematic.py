@@ -72,12 +72,25 @@ class KinematicConfig:
     sigma_gps_course: float = 0.09      # rad, ~5 deg
     sigma_learned_speed: float = 1.0    # m/s
     sigma_centripetal: float = 0.6      # m/s^2
+    sigma_ackermann: float = 1.5        # m/s, soft bound on speed
 
     # Initial uncertainty.
     p0_pos: float = 5.0
     p0_psi: float = 0.15
     p0_speed: float = 1.5
     p0_bias_gyro: float = 0.01
+
+    #: Ackermann bounds (PLAN.md:104). Both are parameter-free in the sense
+    #: that neither needs a wheelbase, which a smartphone cannot know.
+    #:   kappa_max  tightest curvature any road vehicle can achieve;
+    #:              0.28 /m is a 3.6 m turning radius, which covers cars
+    #:   mu         tyre-road friction coefficient; 0.8 is dry asphalt
+    curvature_max: float = 0.28
+    friction_mu: float = 0.8
+    #: Above this lateral acceleration the bicycle model breaks down as the
+    #: tyres begin to slip, so the bounds are switched off rather than
+    #: enforced outside their domain of validity (PLAN.md:108).
+    ackermann_max_lateral_g: float = 0.5
 
     gate_confidence: float = 0.997
     max_consecutive_rejections: int = 3
@@ -93,6 +106,7 @@ class KinematicDiagnostics:
     n_gate_overrides: int = 0
     consecutive_rejections: int = 0
     n_centripetal: int = 0
+    n_ackermann: int = 0
     nis_history: list[float] = field(default_factory=list)
 
 
@@ -220,6 +234,66 @@ class KinematicEKF:
         r = np.array([[(sigma if sigma is not None else self.config.sigma_centripetal) ** 2]])
         self._update(np.array([accel_lateral - (-v * rate)]), h, r)
         self.diagnostics.n_centripetal += 1
+
+    def update_ackermann(self, gyro_z: float, sigma: float | None = None) -> bool:
+        """Bound speed by what a road vehicle can physically do while turning.
+
+        Two inequalities, from PLAN.md:104, neither of which needs a wheelbase:
+
+          curvature   |omega| <= v * kappa_max   ->   v >= |omega| / kappa_max
+          friction    |v * omega| <= mu * g      ->   v <= mu * g / |omega|
+
+        The first says a vehicle turning quickly cannot be crawling: a yaw rate
+        of 0.5 rad/s is impossible below about 1.8 m/s, because no car turns
+        inside a 3.6 m radius. The second says it cannot be flying: the same
+        yaw rate at 20 m/s would need 10 m/s^2 of lateral grip, past what dry
+        asphalt provides.
+
+        Enforced as a soft one-sided pseudo-measurement only when violated, so
+        the bounds cost nothing in normal driving and cannot bias the estimate
+        inward from the middle of the feasible band.
+
+        Returns True if a bound was applied.
+        """
+        rate = abs(gyro_z - float(self.x[I_BW]))
+        if rate < 0.05:               # nearly straight: bounds are vacuous
+            return False
+        v = float(self.x[I_V])
+        c = self.config
+        lateral = abs(v * rate)
+
+        # The two bounds are gated differently, and conflating them makes one
+        # of them dead code.
+        #
+        # PLAN.md:108 says to gate Ackermann terms off above ~0.5 g lateral,
+        # where tyre slip breaks the bicycle model. That is correct for the
+        # *curvature* bound, which is a steering-geometry statement.
+        #
+        # It is circular for the *friction* bound. That bound says lateral
+        # acceleration cannot exceed mu*g = 7.85 m/s^2; the slip gate rejects
+        # anything above 0.5 g = 4.9 m/s^2. Every violation of the friction
+        # bound is therefore already gated out, so applying the same gate to it
+        # means it can never fire -- gating a slip limit by a slip test. The
+        # friction bound is the physics that *defines* the slip limit, so it is
+        # applied unconditionally.
+        target = None
+        upper = c.friction_mu * 9.80665 / rate
+        if v > upper:
+            target = upper
+        elif lateral <= c.ackermann_max_lateral_g * 9.80665:
+            lower = rate / c.curvature_max
+            if lower <= upper and v < lower:
+                target = lower
+
+        if target is None:
+            return False
+
+        h = np.zeros((1, DIM))
+        h[0, I_V] = 1.0
+        r = np.array([[(sigma if sigma is not None else c.sigma_ackermann) ** 2]])
+        self._update(np.array([target - v]), h, r)
+        self.diagnostics.n_ackermann += 1
+        return True
 
     def update_position(self, pos_en: np.ndarray, sigma: float | None = None,
                         cn0_mean: float | None = None) -> bool:

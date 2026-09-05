@@ -32,6 +32,7 @@ def evaluate_sequence(
     cfg: pipeline.KinematicPipelineConfig,
     method: str,
     aligned_any: list[bool] | None = None,
+    speed_estimator=None,
 ) -> list[metrics.OutageResult]:
     ref_lat, ref_lon = pipeline.enu_reference(seq)
     true_e, true_n = geo.lla_to_enu(
@@ -58,9 +59,16 @@ def evaluate_sequence(
             # Give the filter pre-outage context to settle its biases on.
             warm = max(0, w.start_row - 300)
             masked = masking.apply_mask(seq, w)
+            if speed_estimator is not None:
+                # Fix the vertical once per drive from aided data. Re-estimating
+                # it per window reintroduces the short-window tilt error.
+                speed_estimator.set_gravity(
+                    seq.df[["acc_x", "acc_y", "acc_z"]].to_numpy()[: w.start_row + 1]
+                )
             try:
                 traj = pipeline.run(
-                    masked, config=cfg, start_row=warm, end_row=end_row
+                    masked, config=cfg, start_row=warm, end_row=end_row,
+                    speed_estimator=speed_estimator,
                 )
             except (ValueError, np.linalg.LinAlgError):
                 continue
@@ -97,6 +105,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="ablation: enable the centripetal-consistency observation")
     ap.add_argument("--accel-speed", action="store_true",
                     help="ablation: integrate forward accel instead of holding speed")
+    ap.add_argument("--speednet", action="store_true",
+                    help="use the trained CNN+GRU forward-speed front end")
+    ap.add_argument("--no-ackermann", action="store_true",
+                    help="ablation: disable the Ackermann curvature/friction bounds")
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args(argv)
 
@@ -105,12 +117,24 @@ def main(argv: list[str] | None = None) -> int:
     cfg = pipeline.KinematicPipelineConfig(
         use_centripetal=args.cent,
         use_accel_speed=args.accel_speed,
+        use_ackermann=not args.no_ackermann,
     )
     method = "kinematic"
     if args.cent:
         method += "_cent"
     if args.accel_speed:
         method += "_accel"
+    if args.no_ackermann:
+        method += "_no_ack"
+
+    speed_estimator = None
+    if args.speednet:
+        from shadownav.models.inference import SpeedNetEstimator
+
+        speed_estimator = SpeedNetEstimator()
+        method += "_speednet"
+        print(f"speed front end: {speed_estimator.variant} variant, "
+              f"window {speed_estimator.window}")
 
     data_dir = fetch.default_data_dir() / "iovnbd" / "S"
     paths = sorted(data_dir.glob("S-*.csv"))
@@ -135,7 +159,8 @@ def main(argv: list[str] | None = None) -> int:
             if args.limit is not None and n_seq >= args.limit:
                 break
             n_seq += 1
-            rs = evaluate_sequence(seq, split, cfg, method, aligned_flags)
+            rs = evaluate_sequence(seq, split, cfg, method, aligned_flags,
+                                   speed_estimator)
             results.extend(rs)
             per_fold[fold].extend(rs)
 

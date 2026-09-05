@@ -1,0 +1,43 @@
+{
+  "seed": 20260905,
+  "epochs": 6,
+  "n_train": 5619,
+  "n_val": 3423,
+  "n_test": 4922,
+  "trivial_baseline_test_rmse": 1.9762871992629707,
+  "best_variant": "full",
+  "variants": {
+    "full": {
+      "config": {
+        "in_channels": 6,
+        "window": 64,
+        "conv1_out": 48,
+        "conv2_out": 96,
+        "hidden": 96,
+        "bank_size": 32,
+        "n_heads": 4,
+        "use_motion_bank": true,
+        "use_gate": true,
+        "gate_activation": "sigmoid",
+        "dropout": 0.1
+      },
+      "n_parameters": 128083,
+      "val": {
+        "rmse": 2.0263671875,
+        "mae": 1.6552138328552246,
+        "bias": -0.7637711763381958,
+        "sigma_median": 1.2707881927490234,
+        "coverage_1sigma": 0.45807770961145194,
+        "target_std": 2.3377742767333984
+      },
+      "test": {
+        "rmse": 1.5308170318603516,
+        "mae": 1.2234421968460083,
+        "bias": 0.6515793800354004,
+        "sigma_median": 1.2363592386245728,
+        "coverage_1sigma": 0.5550589191385615,
+        "target_std": 1.591368317604065
+      }
+    }
+  }
+}
