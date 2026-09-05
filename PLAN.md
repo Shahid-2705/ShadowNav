@@ -182,15 +182,20 @@ Consistent across train/val/test folds. Comparable to the ">1000% error" a compe
 
 **Remaining Phase 1 gap — the dominant error term.** Drift is still 77–108%, far from the AVNet 0.64% reference and worse than PathPulse's claimed 10%. The residual is **speed staleness**: speed is held from the last fix, which can be 9 s before the outage even starts, then held through it. Closing this is exactly the job of the CNN+GRU forward-speed front end, which is specified and wired (`SpeedEstimator` protocol, `pipeline_kinematic.run(speed_estimator=...)`) but **not yet trained**. Highest-value remaining item.
 
-**Phase 2 — Differentiators, ✦ reordered by verified value-per-hour:**
-1. `L_cent` centripetal loss — highest value, lowest risk
-2. GNSS-loss cause attribution — **bench-test AGC availability first**; fall back to C/N₀-only
-3. Motion Bank + Gated Head (Tanh + Softplus — the paper's own best config, copy verbatim) + continuous scheduling
-4. Heading-only gated map coupling
-5. Scalar conformal inflation (~30 lines)
-6. Rule-based context classifier (~1 day)
-7. NavIC visibility panel
-8. Ackermann curvature/friction bounds
+**Phase 2 — Differentiators, ✦ reordered by verified value-per-hour.** Status as of 2026-09-05:
+
+| # | Item | Status | Outcome |
+|---|---|---|---|
+| 1 | `L_cent` centripetal loss | **built, defaulted OFF** | Implemented as a *measurement* (`update_centripetal`), not a loss — every turn observes speed via `a_lat = −v·ψ̇`. Measurably **hurts** on IO-VNBD: 180 s CRSE 924 → 1,530 m. It reads the accelerometer's horizontal channels, which need the alignment and are aliased at 10 Hz. **Not refuted — untestable on this data.** Re-run on 100–200 Hz Android data. |
+| 2 | GNSS-loss cause attribution | **blocked** | IO-VNBD's S-side carries no C/N₀ or AGC column at all, so neither the primary nor the fallback path can be validated offline. Needs the Android bench test (§7 Q2) before any code is worth writing. |
+| 3 | Motion Bank + Gated Head | **built** | GNIO's bank (32×96, MHA, residual fusion) and gated head, inside the CNN+GRU speed net. ✦ **Deliberate departure:** GNIO's Tanh gate is validated for a *signed displacement vector*; forward speed is a non-negative scalar where a [−1,1] gate can only reach zero by cancelling the magnitude branch. Uses a [0,1] sigmoid, keeping the soft-ZUPT property. Both selectable and ablated. |
+| 4 | Heading-only gated map coupling | not started | Needs OSM/Valhalla. Unchanged from plan. |
+| 5 | Scalar conformal inflation | **built** | The biggest honesty win in the project. Raw 90% ellipses contain **17%** of errors (λ = 15–22, NEES 18–153); calibrated, 97%. Fitted on val, measured on test. |
+| 6 | Rule-based context classifier | **blocked** | Same reason as #2 — no C/N₀ in the S-side data. |
+| 7 | NavIC visibility panel | not started | Android-only by nature. |
+| 8 | Ackermann curvature/friction bounds | **built, marginal** | 180 s: 945 → 871 m (−7.8%); 10 s: 124 → 126 m (+1.4%). Kept on for the hard case. ✦ **Bug found:** the friction bound was dead code — the 0.5 g slip gate (4.9 m/s²) is tighter than the bound itself (μg = 7.85 m/s²), so gating a slip limit by a slip test filtered out every violation before it could fire. Friction now applies unconditionally; only curvature keeps the slip gate. |
+
+✦ **Two Phase-2 items are blocked on a dataset limitation, not on effort.** IO-VNBD's smartphone side has no carrier-to-noise or AGC column, so cause attribution (#2) and the context classifier (#6) cannot be built or falsified offline at all. This strengthens rather than weakens the case for §7 open question 2 — the AGC bench test is now the gate for two features, not one.
 
 **Phase 3 — Moonshot.** GNSS-supervised TTA (BN-affine only, replay buffer, hard revert on loss degradation). Speed-MoE with exogenous routing. **Mamba only if justified by the sweep below.**
 
