@@ -24,8 +24,8 @@ Every commercial GNSS-denied dead-reckoning system (Baidu VDR, Amap's tunnel mod
 | Response to external review | complete |
 | **Phase 0** — data pipeline, split, drift floor | **complete** |
 | **Phase 1** — filter core | **complete** |
-| Phase 1 — CNN+GRU learned speed front end | not started |
-| Phase 2 — differentiators | not started |
+| **Phase 1** — CNN+GRU learned speed front end | **trained, opt-in** |
+| **Phase 2** — differentiators | **4 of 8 built, 2 blocked on missing data** |
 | Phase 3 / Android / submission pack | not started |
 
 **Where it stands, measured.** 79 sessions, 991 scored synthetic outages, one
@@ -33,13 +33,26 @@ seed, one published split — `eval/results/`:
 
 | Horizon | Naive strapdown floor | ShadowNav MVP | Gain |
 |---|---|---|---|
-| 10 s | 310 m | **189 m** | 1.6× |
-| 30 s | 1,725 m | **372 m** | 4.6× |
-| 60 s | 6,856 m | **658 m** | 10.4× |
-| 120 s | 26,688 m | **1,056 m** | 25.3× |
-| 180 s | 63,408 m | **1,463 m** | 43.4× |
+| 10 s | 310 m | **180 m** | 1.7× |
+| 30 s | 1,725 m | **368 m** | 4.7× |
+| 60 s | 6,856 m | **640 m** | 10.7× |
+| 120 s | 26,688 m | **1,071 m** | 24.9× |
+| 180 s | 63,408 m | **1,474 m** | 43.0× |
 
-130 tests pass. Every number above reproduces from a committed seed.
+161 tests pass. Every number above reproduces from a committed seed.
+
+**Confidence is calibrated, and that mattered.** The filter's own 90% ellipses
+contain **17%** of errors on held-out routes — overconfident by 15–22×. A
+scalar conformal inflation fitted on val brings that to 97% on test. Reported
+as *empirically calibrated coverage*, never as guaranteed: trajectory errors
+are not exchangeable.
+
+**The learned speed front end is trained and opt-in.** 128k parameters, 0.13 MB
+INT8, ~19 ms projected on a low-end core against a 30 ms budget. It improves
+position 9–13% at 30–120 s and makes it 19% worse at 180 s, because it carries
+a +1.08 m/s bias that is a driver-shift artefact rather than a model property —
+val and test biases have opposite signs, so it cannot be corrected from
+held-out data. Off by default until it is confidence-gated.
 
 **Not yet good enough, and we say so.** Drift is 77–108% of distance travelled,
 against the 0.64% AVNet field reference and a competitor's claimed 10%. The

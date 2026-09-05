@@ -249,3 +249,60 @@ Training NLL from scratch lets a model escape by predicting a huge variance
 everywhere. The predicted sigma becomes the filter's measurement noise, so a
 network that knows it is guessing widens the gate instead of dragging the
 estimate.
+
+### Ablation — GNIO partly reproduces
+
+| variant | bank | gate | test RMSE | vs trivial |
+|---|---|---|---|---|
+| trivial (predict train mean) | – | – | 1.976 | – |
+| plain | no | no | 2.341 | +18.5% |
+| bank only | yes | no | 2.369 | +19.9% |
+| gate only | no | sigmoid | 2.078 | +5.2% |
+| tanh gate | yes | tanh | 2.069 | +4.7% |
+| **full** | yes | sigmoid | **1.847** | **−6.5%** |
+
+**Reproduced:** the gate helps (+11.2% over plain) and bank+gate beats either
+alone (+21.1%). **Not reproduced:** GNIO reports the Motion Bank *alone* at
+−17.5%; here it is 1.2% *worse* and only pays off alongside the gate.
+
+**The sigmoid departure is validated:** 1.847 vs 2.069, 10.7% better than Tanh.
+
+### Does it help the filter? Partly — and the answer is instructive
+
+Matched 8-sequence head-to-head, 152 outages each:
+
+| horizon | control | + speed net | change | NEES control → net |
+|---|---|---|---|---|
+| 10 s | 125.8 m | 125.6 m | −0.2% | 65 → 107 |
+| 30 s | 291.5 m | **266.3 m** | −8.6% | 84 → 523 |
+| 60 s | 476.1 m | **414.4 m** | −13.0% | 58 → 655 |
+| 120 s | 590.6 m | **536.7 m** | −9.1% | 54 → 1111 |
+| 180 s | 870.6 m | **1033.8 m** | **+18.8%** | 28 → 1783 |
+
+It genuinely helps at mid horizons and hurts at 180 s. Two causes, and only one
+was fixable.
+
+**Variance — fixed.** The NLL head was under-dispersed (1σ coverage 0.27 vs a
+nominal 0.68), so the filter over-trusted it. A val-fitted σ scale of 3.27×
+brings coverage to 0.64 and cut NEES roughly a third (2650 → 1783 at 180 s).
+
+**Bias — not fixable from this data, and we checked before assuming.** The
+model carries a **+1.08 m/s** bias on test. Over 180 s that is ~194 m of
+systematic along-track error, which is almost exactly the 163 m degradation
+observed. The obvious fix is to fit the bias on val and subtract it. It does
+not work here and the numbers say why:
+
+| | val | test |
+|---|---|---|
+| bias | **−0.282** | **+1.082** |
+| target std | 2.34 | 1.59 |
+
+**The biases have opposite signs.** Val is driver E; test is drivers A, B and D.
+The bias is a property of the driver/route shift, not of the model, so a
+val-fitted correction would make test *worse*. De-biasing was not applied.
+
+**So the speed net stays opt-in** (`--speednet`), off by default. Turning on an
+unconditional learned correction that helps at some horizons and hurts at
+others is precisely the failure Agastya's ablation documents. The indicated fix
+is a confidence *gate* on the correction, not more model — and that must be
+built and validated without touching the test fold.
