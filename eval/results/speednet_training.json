@@ -1,6 +1,6 @@
 {
   "seed": 20260905,
-  "epochs": 6,
+  "epochs": 70,
   "n_train": 5619,
   "n_val": 3423,
   "n_test": 4922,
@@ -23,19 +23,147 @@
       },
       "n_parameters": 128083,
       "val": {
-        "rmse": 2.0263671875,
-        "mae": 1.6552138328552246,
-        "bias": -0.7637711763381958,
-        "sigma_median": 1.2707881927490234,
-        "coverage_1sigma": 0.45807770961145194,
+        "rmse": 1.7126998901367188,
+        "mae": 1.339733600616455,
+        "bias": -0.282432496547699,
+        "sigma_median": 0.5101074576377869,
+        "coverage_1sigma": 0.261758691206544,
         "target_std": 2.3377742767333984
       },
       "test": {
-        "rmse": 1.5308170318603516,
-        "mae": 1.2234421968460083,
-        "bias": 0.6515793800354004,
-        "sigma_median": 1.2363592386245728,
-        "coverage_1sigma": 0.5550589191385615,
+        "rmse": 1.8470410108566284,
+        "mae": 1.4447944164276123,
+        "bias": 1.0824474096298218,
+        "sigma_median": 0.5090943574905396,
+        "coverage_1sigma": 0.26676147907354736,
+        "target_std": 1.591368317604065
+      }
+    },
+    "no_bank": {
+      "config": {
+        "in_channels": 6,
+        "window": 64,
+        "conv1_out": 48,
+        "conv2_out": 96,
+        "hidden": 96,
+        "bank_size": 32,
+        "n_heads": 4,
+        "use_motion_bank": false,
+        "use_gate": true,
+        "gate_activation": "sigmoid",
+        "dropout": 0.1
+      },
+      "n_parameters": 87763,
+      "val": {
+        "rmse": 1.7721304893493652,
+        "mae": 1.3699452877044678,
+        "bias": 0.131185844540596,
+        "sigma_median": 0.5161730051040649,
+        "coverage_1sigma": 0.27578147823546595,
+        "target_std": 2.3377742767333984
+      },
+      "test": {
+        "rmse": 2.0781099796295166,
+        "mae": 1.6628456115722656,
+        "bias": 1.4248212575912476,
+        "sigma_median": 0.47750455141067505,
+        "coverage_1sigma": 0.1901665989435189,
+        "target_std": 1.591368317604065
+      }
+    },
+    "no_gate": {
+      "config": {
+        "in_channels": 6,
+        "window": 64,
+        "conv1_out": 48,
+        "conv2_out": 96,
+        "hidden": 96,
+        "bank_size": 32,
+        "n_heads": 4,
+        "use_motion_bank": true,
+        "use_gate": false,
+        "gate_activation": "sigmoid",
+        "dropout": 0.1
+      },
+      "n_parameters": 128018,
+      "val": {
+        "rmse": 1.7013590335845947,
+        "mae": 1.316475749015808,
+        "bias": 0.11186357587575912,
+        "sigma_median": 1.9961272478103638,
+        "coverage_1sigma": 0.7551855097867368,
+        "target_std": 2.3377742767333984
+      },
+      "test": {
+        "rmse": 2.3694756031036377,
+        "mae": 1.9038310050964355,
+        "bias": 1.685630440711975,
+        "sigma_median": 1.8139498233795166,
+        "coverage_1sigma": 0.514831369362048,
+        "target_std": 1.591368317604065
+      }
+    },
+    "plain": {
+      "config": {
+        "in_channels": 6,
+        "window": 64,
+        "conv1_out": 48,
+        "conv2_out": 96,
+        "hidden": 96,
+        "bank_size": 32,
+        "n_heads": 4,
+        "use_motion_bank": false,
+        "use_gate": false,
+        "gate_activation": "sigmoid",
+        "dropout": 0.1
+      },
+      "n_parameters": 87698,
+      "val": {
+        "rmse": 1.7157514095306396,
+        "mae": 1.329321265220642,
+        "bias": 0.06882551312446594,
+        "sigma_median": 0.7066898345947266,
+        "coverage_1sigma": 0.3569967864446392,
+        "target_std": 2.3377742767333984
+      },
+      "test": {
+        "rmse": 2.341243267059326,
+        "mae": 1.8647855520248413,
+        "bias": 1.6159580945968628,
+        "sigma_median": 0.7620221972465515,
+        "coverage_1sigma": 0.31816334823242587,
+        "target_std": 1.591368317604065
+      }
+    },
+    "tanh_gate": {
+      "config": {
+        "in_channels": 6,
+        "window": 64,
+        "conv1_out": 48,
+        "conv2_out": 96,
+        "hidden": 96,
+        "bank_size": 32,
+        "n_heads": 4,
+        "use_motion_bank": true,
+        "use_gate": true,
+        "gate_activation": "tanh",
+        "dropout": 0.1
+      },
+      "n_parameters": 128083,
+      "val": {
+        "rmse": 1.7446974515914917,
+        "mae": 1.3419994115829468,
+        "bias": -0.22894756495952606,
+        "sigma_median": 0.5218846797943115,
+        "coverage_1sigma": 0.2740286298568507,
+        "target_std": 2.3377742767333984
+      },
+      "test": {
+        "rmse": 2.06921124458313,
+        "mae": 1.612932801246643,
+        "bias": 1.3427397012710571,
+        "sigma_median": 0.5005021095275879,
+        "coverage_1sigma": 0.24989841527834214,
         "target_std": 1.591368317604065
       }
     }

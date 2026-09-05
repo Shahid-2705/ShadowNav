@@ -257,3 +257,66 @@ def test_model_is_causal_in_the_window():
     y[0, -1, :] += 5.0
     with torch.no_grad():
         assert not torch.allclose(model(x)[0], model(y)[0])
+
+
+# --------------------------------------------------------------------------
+# the shipped checkpoint
+# --------------------------------------------------------------------------
+
+def test_shipped_checkpoint_loads_safely_and_fits_the_budget():
+    """Guards the artifact that actually ships, not just the class.
+
+    weights_only=True is the point: torch.load defaults to unpickling arbitrary
+    Python objects. If someone re-saves this checkpoint with numpy arrays in it,
+    safe loading breaks and this test says so.
+    """
+    from pathlib import Path
+
+    from shadownav.models.inference import DEFAULT_MODEL, SpeedNetEstimator
+
+    if not Path(DEFAULT_MODEL).exists():
+        pytest.skip("no trained model; run scripts/train_speednet.py")
+
+    est = SpeedNetEstimator()
+    assert est.window == 64
+    assert est.mean.shape == (N_CHANNELS,)
+    assert est.std.shape == (N_CHANNELS,)
+    assert est.model.n_parameters < 1_250_000, "would exceed ~5 MB INT8"
+
+    size_mb = Path(DEFAULT_MODEL).stat().st_size / 1e6
+    assert size_mb < 5.0, f"checkpoint is {size_mb:.2f} MB, budget is 5 MB"
+
+
+def test_estimator_returns_a_finite_speed_and_sigma():
+    from pathlib import Path
+
+    from shadownav.models.inference import DEFAULT_MODEL, SpeedNetEstimator
+
+    if not Path(DEFAULT_MODEL).exists():
+        pytest.skip("no trained model; run scripts/train_speednet.py")
+
+    est = SpeedNetEstimator()
+    rng = np.random.default_rng(0)
+    acc = rng.normal(0, 0.3, (64, 3)) + np.array([0.0, 0.0, 9.81])
+    gyr = rng.normal(0, 0.05, (64, 3))
+    speed, sigma = est(acc, gyr)
+    assert np.isfinite(speed) and speed >= 0.0
+    assert est.sigma_floor <= sigma <= est.sigma_ceiling
+
+
+def test_estimator_declines_on_a_short_window():
+    """NaN means 'no opinion', which the filter treats as no measurement.
+
+    Returning 0.0 instead would look superb on lateral error and be
+    catastrophically wrong on position.
+    """
+    from pathlib import Path
+
+    from shadownav.models.inference import DEFAULT_MODEL, SpeedNetEstimator
+
+    if not Path(DEFAULT_MODEL).exists():
+        pytest.skip("no trained model; run scripts/train_speednet.py")
+
+    est = SpeedNetEstimator()
+    speed, sigma = est(np.zeros((8, 3)), np.zeros((8, 3)))
+    assert np.isnan(speed) and np.isnan(sigma)
