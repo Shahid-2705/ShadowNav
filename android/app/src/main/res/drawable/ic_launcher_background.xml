@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Subtle radial vignette instead of a flat fill, so the mark reads as
+     sitting in front of something with depth rather than pasted on a card.
+     Same near-black family as the app's own Palette.BG, just with a touch
+     of lift toward the centre. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M0,0 h108 v108 h-108 z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="54"
+                android:centerY="46"
+                android:gradientRadius="70"
+                android:startColor="#FF141C26"
+                android:centerColor="#FF0B0F15"
+                android:endColor="#FF07090C" />
+        </aapt:attr>
+    </path>
+</vector>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Themed-icon (Android 13+) silhouette: the system applies its own single
+     tint, so the glow/gradient layers from ic_launcher_foreground.xml would
+     just stack as flat alpha on top of each other here: a clean single-
+     colour version of the same mark instead. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M30,66 A24,24 0 0,1 54,42" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:strokeAlpha="0.55"
+        android:fillColor="#00000000"
+        android:pathData="M54,42 A24,24 0 0,1 78,66" />
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="3" android:strokeLineCap="round"
+        android:strokeAlpha="0.4" android:fillColor="#00000000" android:pathData="M72,74 L76,80" />
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="3" android:strokeLineCap="round"
+        android:strokeAlpha="0.25" android:fillColor="#00000000" android:pathData="M62,79 L64,86" />
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="3" android:strokeLineCap="round"
+        android:strokeAlpha="0.12" android:fillColor="#00000000" android:pathData="M50,81 L50,88" />
+    <path android:fillColor="#FFFFFF" android:pathData="M54,26 L70,68 L54,59 L38,68 Z" />
+</vector>

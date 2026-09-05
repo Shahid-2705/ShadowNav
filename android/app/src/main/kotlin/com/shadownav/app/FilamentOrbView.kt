@@ -111,7 +111,16 @@ class FilamentOrbView @JvmOverloads constructor(
         camera = eng.createCamera(eng.entityManager.create())
         filamentView!!.camera = camera
         filamentView!!.scene = scene
-        filamentView!!.isPostProcessingEnabled = false // status widget, not worth the cost
+        // "More stunning" pass: bloom is what actually makes an emissive
+        // orb read as *glowing* rather than just brightly coloured -- a flat
+        // colour pulse (the original implementation) can't produce that.
+        // The view is 44dp and off-screen except when RenderTier warrants
+        // 3D at all, so full post-processing is affordable here even though
+        // it wasn't worth it for the (much larger) map route scene.
+        filamentView!!.bloomOptions = filamentView!!.bloomOptions.apply {
+            enabled = true
+            strength = 1.2f
+        }
         // Matches Ui.kt's Palette.BG (0xFF07090C): the orb sits directly on
         // the app's own header background, so a mismatched clear colour
         // would show a visible seam around this SurfaceView.
@@ -155,7 +164,10 @@ class FilamentOrbView @JvmOverloads constructor(
     private fun buildRenderable(engine: Engine) {
         val mat = material ?: return
         materialInstance = mat.createInstance()
-        materialInstance!!.setParameter("baseColor", Colors.RgbType.SRGB, displayedColour[0], displayedColour[1], displayedColour[2])
+        materialInstance!!.setParameter(
+            "baseColor", Colors.RgbType.SRGB,
+            displayedColour[0] * emissiveBoost, displayedColour[1] * emissiveBoost, displayedColour[2] * emissiveBoost,
+        )
 
         val mesh = IcosphereGeometry.build(subdivisions = if (reducedQuality) 0 else 1)
         indexCount = mesh.indices.size
@@ -193,6 +205,13 @@ class FilamentOrbView @JvmOverloads constructor(
         scene!!.addEntity(renderable)
     }
 
+    /** Pushes the UNLIT material's emitted colour past the tone mapper's
+     *  displayable range so [View.BloomOptions]'s bright-pass actually has
+     *  something to bloom -- a plain [0,1] sRGB colour is well within normal
+     *  range and produces no visible bloom at all, tuned empirically on the
+     *  connected device. */
+    private val emissiveBoost = 2.5f
+
     /** Milliseconds for a colour transition to complete. Not the demo's 1.8 s
      *  shard-reassembly time -- this view has no shards yet (see file
      *  comment), so a snappier, simpler cross-fade is the honest choice. */
@@ -224,9 +243,10 @@ class FilamentOrbView @JvmOverloads constructor(
             } else {
                 1.0f
             }
+            val boost = pulse * emissiveBoost
             materialInstance?.setParameter(
                 "baseColor", Colors.RgbType.SRGB,
-                displayedColour[0] * pulse, displayedColour[1] * pulse, displayedColour[2] * pulse,
+                displayedColour[0] * boost, displayedColour[1] * boost, displayedColour[2] * boost,
             )
 
             val transform = FloatArray(16)

@@ -131,9 +131,17 @@ class MapRouteView @JvmOverloads constructor(
         // fix, so the basemap itself is always verifiable independent of
         // GPS -- important while the bundled region is still a placeholder
         // (PLAN.md Step 0/3) rather than wherever the device actually is.
+        //
+        // A tilted camera is what actually makes this read as 3D: the
+        // building layer is a real fill-extrusion (MapStyle.kt) using
+        // Planetiler's own render_height/render_min_height fields, but an
+        // extruded building is visually indistinguishable from a flat one
+        // when the camera looks straight down at it -- you only see roofs
+        // either way. Tilt exposes the building sides.
         m.cameraPosition = CameraPosition.Builder()
             .target(LatLng(PLACEHOLDER_LAT, PLACEHOLDER_LON))
-            .zoom(14.5)
+            .zoom(16.0)
+            .tilt(55.0)
             .build()
     }
 

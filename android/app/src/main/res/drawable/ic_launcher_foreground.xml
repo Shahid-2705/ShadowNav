@@ -1,28 +1,40 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- ShadowNav mark.
+<!-- ShadowNav mark, v2 (more stunning pass, per user request).
 
-     The name refers to GPS shadow, the standard term for a zone where the
-     satellite signal is blocked, so the mark is a heading arrow passing through
-     one. It reads as a single silhouette at launcher size: a navigation chevron
-     rising out of an arc, with the arc broken on the shadowed side.
+     Same concept as before, given real depth instead of flat strokes:
+     a heading chevron carrying straight through a broken confidence ring,
+     the ring lit cyan on the visible-sky side and fading magenta into the
+     shadowed side. Colour still carries the same meaning as the running
+     app: cyan aided, magenta dead reckoning, amber the confidence ring.
 
-     Colour carries meaning rather than decoration, and it is the same language
-     the running app and the presentation demo use:
-       cyan     GNSS aided
-       magenta  dead reckoning
-       amber    the calibrated confidence ring
+     Depth is faked the way vector drawables have to fake it: a soft radial
+     glow blob behind the mark, each stroke doubled with a wider/dimmer
+     "glow" pass underneath the crisp one, and the chevron is gradient-filled
+     (bright cyan tip fading to a deeper teal base) instead of a flat colour,
+     so it reads as lit rather than printed.
 
-     Adaptive icon geometry: 108x108 viewport, but only the central 66x66 is
-     guaranteed visible on every launcher mask, so the artwork stays inside
-     roughly 24..84 and the important part inside 34..74.
+     Adaptive icon geometry: 108x108 viewport, central 66x66 guaranteed
+     visible, important content kept inside roughly 30..78.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Confidence ring, lit arc: the part of the sky still in view. -->
+    <!-- Soft ambient glow behind the whole mark, like the app's own signal
+         orb. A single big soft-alpha circle standing in for a blur. -->
+    <path android:fillColor="#3D4DE0E8" android:pathData="M54,54 m-30,0 a30,30 0 1,0 60,0 a30,30 0 1,0 -60,0" />
+    <path android:fillColor="#664DE0E8" android:pathData="M54,54 m-20,0 a20,20 0 1,0 40,0 a20,20 0 1,0 -40,0" />
+
+    <!-- Confidence ring, lit arc: glow pass (wide, dim) then crisp pass. -->
+    <path
+        android:strokeColor="#804DE0E8"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M30,66 A24,24 0 0,1 54,42" />
     <path
         android:strokeColor="#4DE0E8"
         android:strokeWidth="3"
@@ -30,8 +42,13 @@
         android:fillColor="#00000000"
         android:pathData="M30,66 A24,24 0 0,1 54,42" />
 
-    <!-- Confidence ring, shadowed arc: dimmer and magenta, and deliberately
-         not closed. The gap is the blackout. -->
+    <!-- Confidence ring, shadowed arc: same glow treatment in magenta. -->
+    <path
+        android:strokeColor="#80E24DBE"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M54,42 A24,24 0 0,1 78,66" />
     <path
         android:strokeColor="#E24DBE"
         android:strokeWidth="3"
@@ -39,34 +56,26 @@
         android:fillColor="#00000000"
         android:pathData="M54,42 A24,24 0 0,1 78,66" />
 
-    <!-- Uncertainty growing under the shadowed side: three ticks that fade,
-         which is what the app's ring actually does during an outage. -->
-    <path
-        android:strokeColor="#E24DBE"
-        android:strokeWidth="3"
-        android:strokeLineCap="round"
-        android:strokeAlpha="0.75"
-        android:fillColor="#00000000"
-        android:pathData="M72,74 L76,80" />
-    <path
-        android:strokeColor="#E24DBE"
-        android:strokeWidth="3"
-        android:strokeLineCap="round"
-        android:strokeAlpha="0.45"
-        android:fillColor="#00000000"
-        android:pathData="M62,79 L64,86" />
-    <path
-        android:strokeColor="#E24DBE"
-        android:strokeWidth="3"
-        android:strokeLineCap="round"
-        android:strokeAlpha="0.22"
-        android:fillColor="#00000000"
-        android:pathData="M50,81 L50,88" />
+    <!-- Uncertainty ticks fading out under the shadowed side. -->
+    <path android:strokeColor="#E24DBE" android:strokeWidth="3" android:strokeLineCap="round"
+        android:strokeAlpha="0.75" android:fillColor="#00000000" android:pathData="M72,74 L76,80" />
+    <path android:strokeColor="#E24DBE" android:strokeWidth="3" android:strokeLineCap="round"
+        android:strokeAlpha="0.45" android:fillColor="#00000000" android:pathData="M62,79 L64,86" />
+    <path android:strokeColor="#E24DBE" android:strokeWidth="3" android:strokeLineCap="round"
+        android:strokeAlpha="0.22" android:fillColor="#00000000" android:pathData="M50,81 L50,88" />
 
-    <!-- The heading chevron, carrying straight through the gap. This is the
-         whole idea of the product in one shape: the estimate does not stop
-         where the signal does. -->
-    <path
-        android:fillColor="#4DE0E8"
-        android:pathData="M54,26 L70,68 L54,59 L38,68 Z" />
+    <!-- The heading chevron: soft glow pass, then a gradient-filled crisp
+         chevron so it reads as an emissive shape rather than flat colour. -->
+    <path android:fillColor="#554DE0E8" android:pathData="M54,22 L74,70 L54,60 L34,70 Z" />
+    <path android:pathData="M54,26 L70,68 L54,59 L38,68 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="54" android:startY="26"
+                android:endX="54" android:endY="68"
+                android:startColor="#FFEAFFFE"
+                android:centerColor="#FF6FEAF0"
+                android:endColor="#FF2FA8B8" />
+        </aapt:attr>
+    </path>
 </vector>
