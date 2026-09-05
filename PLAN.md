@@ -201,6 +201,16 @@ Consistent across train/val/test folds. Comparable to the ">1000% error" a compe
 
 ✦ **Run before spending any Mamba effort:** sweep GRU context length at 1 / 5 / 10 / 20 s. Mamba's own Theorem 1 shows selection reduces exactly to a gated RNN at N=1 — there is no categorical gap over a GRU at T=200. If accuracy saturates at 2–4 s, cut Mamba from the plan.
 
+**✦ Phase E — Android (added; status 2026-09-05).** Built and compiling. Two Gradle modules: a pure-Kotlin/JVM estimator with no Android dependency, and the app. Release APK **2.2 MB**, minSdk **29** (set by `CONSTELLATION_IRNSS`, not by habit).
+
+The estimator is **proved numerically identical to the Python implementation** — nine golden cases exported from Python, replayed in JUnit, agreement to 1e-9, covering geodesy, propagation, every measurement type, the gate escape, the Ackermann bounds, the blend spring, alignment and the invariant features. §2.4's requirement that the Kotlin path be verified against Python before any on-device number is trusted is therefore satisfied.
+
+The app measures the **achieved IMU rate** rather than assuming 200 Hz, and shows it as a headline diagnostic — every offline negative result depended on that variable. AGC is reported in three honest states (unavailable below API 33 / supported-but-silent / a value), which is what makes the §3.3 claim survivable. The confidence ring is the **calibrated** 90% radius, never the raw covariance.
+
+Nothing was enabled on device merely because more data is available: forward-acceleration speed and `L_cent` stay off until their ablations are re-run at the rate the phone actually delivers.
+
+**Not done:** no on-device latency, battery or thermal measurement; no drive-log export; the learned speed head is not wired in (it is off in the offline pipeline too); and the 21-state strapdown is still unused even though the phone's higher rate is exactly the condition under which it should work — that is the first experiment to run.
+
 **Phase 4 — Validation & pitch.** IO-VNBD replay with synthetic masking on your documented split. Demo the outage → reacquisition transition with no visible jump — the PS's literal grading criterion.
 
 ---

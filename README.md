@@ -15,6 +15,9 @@ Every commercial GNSS-denied dead-reckoning system (Baidu VDR, Amap's tunnel mod
 - **[research/SIH26168-open-track-findings.md](research/SIH26168-open-track-findings.md)** — verification pass on nine proposed features, with buildable/not-buildable verdicts. Read before claiming anything is novel.
 - **[research/SIH26168-external-review-response.md](research/SIH26168-external-review-response.md)** — response to an external 7.5/10 review that evaluated *pedestrian* DR by mistake. Carries the corrected weighted scorecard (4.1/10 today → 6.2/10 at MVP), the PDR→vehicle translation table, and the low-end-device hardware decision.
 - **[demo/](demo/)** — single-file WebGL presentation demo (`gnss-demo.html`) simulating the GNSS-blackout → dead-reckoning → re-acquisition cycle for live pitching.
+- **[python/](python/)** — data pipeline, estimator, evaluation harness, learned speed net. Start at [python/README.md](python/README.md).
+- **[android/](android/)** — the live app. The estimator is a pure-Kotlin module proved numerically identical to Python by a golden-vector parity suite. 2.2 MB release APK, minSdk 29.
+- **[shared/](shared/)** — the Python↔Android contract: model checkpoint, conformal factors, and the rules for using them.
 
 ## Status — 2026-09-05
 
@@ -26,7 +29,8 @@ Every commercial GNSS-denied dead-reckoning system (Baidu VDR, Amap's tunnel mod
 | **Phase 1** — filter core | **complete** |
 | **Phase 1** — CNN+GRU learned speed front end | **trained, opt-in** |
 | **Phase 2** — differentiators | **4 of 8 built, 2 blocked on missing data** |
-| Phase 3 / Android / submission pack | not started |
+| **Phase E** — Android app | **builds, parity-proved; no on-device measurement yet** |
+| Phase 3 / submission pack | not started |
 
 **Where it stands, measured.** 79 sessions, 991 scored synthetic outages, one
 seed, one published split — `eval/results/`:
