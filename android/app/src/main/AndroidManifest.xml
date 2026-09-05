@@ -11,15 +11,27 @@
          ACCESS_NETWORK_STATE, ACCESS_WIFI_STATE and ACCESS_COARSE_LOCATION,
          for its optional network tile-fetching and built-in "my location"
          layer, neither of which this app uses (blueprint Step 3: the route
-         scene loads only a bundled `mbtiles:///android_asset/...` source,
-         never a network style URL, and the vehicle position comes from this
-         app's own estimator, never MapLibre's location layer). Stripping
-         them keeps the shipped permission set honest to what the app
-         actually does, and preserves the "on-device, no cloud" pitch
-         (PLAN.md §3.8) that a bundled-but-still-network-permitted map would
-         otherwise quietly contradict. -->
+         scene loads only a bundled `mbtiles://file://...` source, never a
+         network style URL, and the vehicle position comes from this app's
+         own estimator, never MapLibre's location layer). INTERNET,
+         ACCESS_WIFI_STATE and ACCESS_COARSE_LOCATION are stripped so the
+         shipped permission set stays honest to what the app does and the
+         "on-device, no cloud" pitch (PLAN.md section 3.8) holds: INTERNET is
+         the one that actually matters for that claim, since without it no
+         socket can be opened regardless of what else is granted.
+
+         ACCESS_NETWORK_STATE is NOT stripped: it is a read-only "normal"
+         permission (auto-granted, no runtime prompt, no privacy exposure;
+         it only lets an app ask "is a network up," not use one) and
+         MapLibre's internal ConnectivityReceiver calls
+         ConnectivityManager.getActiveNetworkInfo() unconditionally on every
+         CONNECTIVITY_CHANGE broadcast. Without this permission that throws
+         a SecurityException and crashes the app on the very first Wi-Fi or
+         mobile-data transition, confirmed by an actual crash on-device
+         during Step 3 verification before this permission was restored:
+         removing it was the wrong call, corrected here rather than left as
+         a landmine. -->
     <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" tools:node="remove" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" tools:node="remove" />
 

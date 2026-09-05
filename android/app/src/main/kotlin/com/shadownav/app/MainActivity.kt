@@ -27,6 +27,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.shadownav.core.GnssMode
 import org.json.JSONObject
 
 /**
@@ -280,6 +281,36 @@ class MainActivity : AppCompatActivity() {
         orb = view
     }
 
+    /** Blueprint Step 3: swap the flat [TrackView] for the real-world
+     *  [MapRouteView] when the device warrants it. [TrackView] is not
+     *  destroyed -- just detached -- so its `conformalLambda` and the
+     *  "90% RADIUS" metric calculation in [render] keep working unchanged
+     *  regardless of which view is actually on screen. */
+    private fun attachMapRouteIfWarranted(tier: RenderTier) {
+        if (tier == RenderTier.Canvas2D || mapRoute != null) return
+        mapCard.removeView(track)
+        val view = MapRouteView(this).apply {
+            conformalLambda = track.conformalLambda
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(300f),
+            )
+        }
+        mapCard.addView(view)
+        mapRoute = view
+
+        // OpenMapTiles/OSM require a visible credit wherever the bundled
+        // tiles are shown (Planetiler's own build output states the exact
+        // wording) -- ODbL licence condition, not optional polish.
+        val credit = TextView(this).apply {
+            text = MapRouteView.ATTRIBUTION
+            textSize = 9f
+            setTextColor(Palette.DIM)
+            setPadding(dp(4f), dp(4f), dp(4f), 0)
+        }
+        mapCard.addView(credit)
+        attribution = credit
+    }
+
     /** Cycles the chip/orb through every [UiSignalState] on a long-press,
      *  bypassing NavigationEngine entirely (blueprint Step 2, FIX-7) --
      *  DEGRADED specifically has no reachable path from the real engine via
@@ -382,14 +413,50 @@ class MainActivity : AppCompatActivity() {
         }
 
         track.push(s)
+
+        // Computed once, shared by the recorder and the map route view
+        // (blueprint Step 3: "feed it from the same data path", not a
+        // second one) -- estimateLatLon() is null before the first fix,
+        // same as TrackView's own "waiting for first fix" treatment.
+        val ll = svc.engine.estimateLatLon()
         if (rec?.isRecording == true) {
-            val ll = svc.engine.estimateLatLon()
             rec.record(
                 s, sensors.measuredAccelHz,
                 ll?.get(0) ?: Double.NaN, ll?.get(1) ?: Double.NaN,
                 s.simulatedBlackout,
             )
         }
+        pushMapRoute(s, ll)
+    }
+
+    /** Routes real (or, in debug mode, synthetic) position data to
+     *  [MapRouteView]. Debug mode never touches [NavigationEngine] --
+     *  it feeds a small synthetic path near the bundled tileset's own
+     *  region instead, which is the only way to see the dynamic trail/
+     *  ring/vehicle layers render without a live outdoor fix, since real
+     *  GNSS fixes on this device are wherever the device actually is, not
+     *  necessarily inside the bundled placeholder tileset's coverage
+     *  (PLAN.md Step 0/3). */
+    private fun pushMapRoute(s: NavigationEngine.Snapshot, ll: DoubleArray?) {
+        val route = mapRoute ?: return
+        val debugMode = debugStateOverride
+        if (debugMode == null) {
+            route.push(s, ll?.get(0) ?: Double.NaN, ll?.get(1) ?: Double.NaN)
+            return
+        }
+        if (debugMode == UiSignalState.ACQUIRING) return // matches "no fix yet": nothing to push
+        val t = android.os.SystemClock.elapsedRealtime() / 1000.0
+        val lat = MapRouteView.PLACEHOLDER_LAT + 0.001 * kotlin.math.sin(t * 0.3)
+        val lon = MapRouteView.PLACEHOLDER_LON + 0.001 * kotlin.math.cos(t * 0.3)
+        val mode = when (debugMode) {
+            UiSignalState.SIMULATED_BLACKOUT, UiSignalState.DEAD_RECKONING -> GnssMode.DEAD_RECKONING
+            UiSignalState.AIDED -> GnssMode.AIDED
+            UiSignalState.DEGRADED -> GnssMode.DEGRADED
+            UiSignalState.REACQUIRING -> GnssMode.REACQUIRING
+            UiSignalState.ACQUIRING -> return
+        }
+        val synthetic = s.copy(hasFix = true, mode = mode, sigmaM = 15.0, simulatedBlackout = false)
+        route.push(synthetic, lat, lon)
     }
 
     // ----------------------------------------------------------- recording
@@ -486,11 +553,42 @@ class MainActivity : AppCompatActivity() {
         }
     }.getOrDefault(1.0)
 
+    // MapLibre's MapView (inside MapRouteView, blueprint Step 3) needs every
+    // Activity lifecycle callback forwarded to it -- unlike FilamentOrbView's
+    // SurfaceView, which only needed onAttachedToWindow/onDetachedFromWindow.
+    // orb is unaffected: it has no such requirement.
+
+    override fun onStart() {
+        super.onStart()
+        mapRoute?.onStart()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        mapRoute?.onResume()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        mapRoute?.onPause()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        mapRoute?.onStop()
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        mapRoute?.onLowMemory()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         running = false
         ui.removeCallbacks(refresh)
         recorder?.stop()
+        mapRoute?.onDestroy()
         // Unbind only. The service keeps running deliberately: closing the
         // screen mid-tunnel must not end the drive.
         runCatching { unbindService(connection) }
