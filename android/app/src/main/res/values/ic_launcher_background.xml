@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Same near-black as the app background, so the icon and the running app
+         read as one thing. -->
+    <color name="ic_launcher_background">#07090C</color>
+</resources>

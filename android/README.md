@@ -156,6 +156,46 @@ it. Verified on device: with the launcher in the foreground, the service reports
 This is also why a notification appears. It is the platform's required price for
 background location, and it doubles as a live readout visible without unlocking.
 
+### A fourth bug: dead reckoning away while parked
+
+With location finally enabled, the phone took a weak 3-satellite indoor fix
+that reported **4.1 m/s**, lost it, and then dead-reckoned at 4.1 m/s
+indefinitely while sitting on a desk. σ grew honestly from 24 m to 33 m, but
+the position ran away. With speed held and no GNSS, nothing could contradict it.
+
+The IMU knew all along. `StationaryDetector` watches specific-force variance,
+its deviation from g, angular rate, and — critically — the **tilt** of the mean
+specific force against a reference vertical. Tilt is what catches horizontal
+acceleration: a 1.5 m/s² forward push lifts |a| only from 9.807 to 9.921, which
+magnitude alone cannot see, but tilts the apparent vertical by 8.7°, which is
+unmistakable. When stationary it applies a zero-speed update at σ = 0.05.
+
+It took two attempts to get right on hardware, and both failures were invisible
+from its boolean output, which is why it now exposes its internals:
+
+1. It ran *after* `val f = ekf ?: return`, so it never executed before the first
+   GNSS fix — exactly when a stale speed does the damage.
+2. The tilt reference was hardcoded to `(0,0,1)` until a fix arrived, so unless
+   the phone lay perfectly flat every sample was rejected. Gravity comes from
+   the IMU alone and is now bootstrapped from it.
+
+Verified on device, phone at rest:
+
+```
+stat=false std=0.018 mag=9.862 gyr=0.0127 tilt=0.0018 blk=none held=1.4
+stat=true  std=0.012 mag=9.859 gyr=0.0038 tilt=0.0015 blk=none held=5.4
+```
+
+Every condition passes with margin, and the 1.5 s dwell is respected.
+
+### An app icon
+
+`ic_launcher` is a navigation chevron half-eclipsed: cyan for the GNSS-aided
+half, magenta for the dead-reckoning half, with the amber containment ring
+beneath. The name refers to GPS shadow, so the mark is a heading arrow with a
+shadow across it, in the same colour language the app and the demo already use
+for those states.
+
 ### Not yet measured
 
 No GNSS fix was obtained — the test was indoors, `sats 0/0`. Everything

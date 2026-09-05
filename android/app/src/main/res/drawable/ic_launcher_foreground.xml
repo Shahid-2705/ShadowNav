@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ShadowNav mark: a navigation chevron with a shadow falling across it.
+
+     The name refers to GPS shadow, the standard term for a zone where the
+     satellite signal is blocked. So the mark is a heading arrow half-eclipsed:
+     the lit half is cyan (GNSS aided) and the eclipsed half is magenta (dead
+     reckoning), which is the same colour language the app and the presentation
+     demo use for those two states. It reads at launcher size because it is one
+     silhouette split by one hard edge, not two overlapping objects.
+
+     Adaptive icon: 108x108 viewport, only the central 66x66 is guaranteed
+     visible, so the artwork stays inside roughly x/y 30..78. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Lit half of the chevron: GNSS aided. -->
+    <path
+        android:fillColor="#4DE0E8"
+        android:pathData="M54,26 L54,82 L34,70 Z" />
+
+    <!-- Shadowed half: dead reckoning. Same silhouette, dimmer and magenta,
+         so the split reads as one arrow in two states rather than two shapes. -->
+    <path
+        android:fillColor="#E24DBE"
+        android:pathData="M54,26 L74,70 L54,82 Z" />
+
+    <!-- The shadow edge itself, cutting across the mark. -->
+    <path
+        android:fillColor="#0B1016"
+        android:pathData="M54,26 L58,26 L58,82 L54,82 Z" />
+
+    <!-- Containment ring, clipped to the lit side: the calibrated confidence
+         circle the app draws around the vehicle. -->
+    <path
+        android:strokeColor="#E8A33D"
+        android:strokeWidth="2.5"
+        android:fillColor="#00000000"
+        android:pathData="M54,88 m-26,0 a26,26 0 1,1 52,0" />
+</vector>

@@ -113,13 +113,14 @@ class NavigationService : Service(), SensorCapture.Listener, GnssCapture.Listene
             TAG,
             ("imu=%.0fHz gap=%.0fms mode=%s fix=%b v=%.1f hdg=%.0f sigma=%.1f " +
                 "tsf=%.1f dr=%.0fm sats=%d/%d cn0=%.1f navic=%d/%d alignQ=%.2f " +
-                "gps=%d/%d ovr=%d").format(
+                "gps=%d/%d ovr=%d stat=%b %s").format(
                     sensors.measuredAccelHz, sensors.maxGapMs, s.mode.name, s.hasFix,
                     s.speedMs, Math.toDegrees(s.headingRad), s.sigmaM,
                     s.timeSinceFixS, s.distanceSinceLossM,
                     g.satellitesUsed, g.satellitesVisible, g.meanCn0,
                     g.navicVisible, g.navicUsed, s.alignmentQuality,
-                    s.gpsAccepted, s.gpsRejected, s.gateOverrides,
+                    s.gpsAccepted, s.gpsRejected, s.gateOverrides, s.stationary,
+                    s.stationaryDebug,
                 ),
         )
     }

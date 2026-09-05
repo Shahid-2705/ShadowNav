@@ -205,6 +205,13 @@ class MainActivity : AppCompatActivity() {
                 g.navicVisible, g.navicUsed,
             ))
             append(gnss.agcStatusText()).append('\n')
+            if (s.stationary) {
+                // Zero-velocity update active: worth showing, because it is the
+                // difference between a parked phone holding position and one
+                // dead-reckoning away at a stale speed.
+                append("STATIONARY  speed held at zero")
+                append('\n')
+            }
             append("align q %.2f %s   fixes %d ok / %d rejected / %d override".format(
                 s.alignmentQuality,
                 if (s.aligned) "(car frame)" else "(device frame, NHC off)",

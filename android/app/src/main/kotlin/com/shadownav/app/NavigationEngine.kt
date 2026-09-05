@@ -9,6 +9,7 @@ import com.shadownav.core.GnssFsm
 import com.shadownav.core.GnssMode
 import com.shadownav.core.GnssObservation
 import com.shadownav.core.KinematicEkf
+import com.shadownav.core.StationaryDetector
 import kotlin.math.hypot
 import kotlin.math.sqrt
 
@@ -35,8 +36,10 @@ class NavigationEngine {
     private var refLon = Double.NaN
 
     private var lastImuNs = 0L
+    private val stationary = StationaryDetector()
     private var alignment: Alignment = Alignment.identity()
     private var gravity = doubleArrayOf(0.0, 0.0, 1.0)
+    private var gravityEstablished = false
 
     /** Rolling buffers used only to bootstrap the alignment, then trimmed.
      *  Bounded so a long drive cannot grow them without limit. */
@@ -57,6 +60,14 @@ class NavigationEngine {
 
     var minAlignmentQuality = 0.25
 
+    private companion object {
+        /** ~1 s at 400 Hz: enough for the vehicle's own accelerations to
+         *  average out of the mean. */
+        const val GRAVITY_MIN_SAMPLES = 400
+        /** Re-estimate roughly every 2 s. The mounting can shift. */
+        const val GRAVITY_REFRESH_SAMPLES = 800
+    }
+
     data class Snapshot(
         val hasFix: Boolean,
         val mode: GnssMode,
@@ -69,6 +80,8 @@ class NavigationEngine {
         val distanceSinceLossM: Double,
         val alignmentQuality: Double,
         val aligned: Boolean,
+        val stationary: Boolean,
+        val stationaryDebug: String,
         val gnss: GnssCapture.Snapshot,
         val gpsAccepted: Int,
         val gpsRejected: Int,
@@ -94,6 +107,12 @@ class NavigationEngine {
             distanceSinceLossM = distanceSinceLossM,
             alignmentQuality = alignment.quality,
             aligned = alignment.quality >= minAlignmentQuality,
+            stationary = stationary.isStationary,
+            stationaryDebug = "std=%.3f mag=%.3f gyr=%.4f tilt=%.4f blk=%s held=%.1f".format(
+                stationary.lastAccelStd, stationary.lastMeanMag,
+                stationary.lastGyroMag, stationary.lastTiltRad,
+                stationary.lastBlocker, stationary.heldForS,
+            ),
             gnss = lastGnss,
             gpsAccepted = f?.diagnostics?.gpsAccepted ?: 0,
             gpsRejected = f?.diagnostics?.gpsRejected ?: 0,
@@ -125,6 +144,30 @@ class NavigationEngine {
             )
             pushBuffer(a, g, dt)
 
+            // Gravity direction comes from the IMU alone and needs no fix.
+            // It was previously only set in onFix, leaving the tilt reference
+            // hardcoded to (0,0,1); unless the phone happened to lie perfectly
+            // flat that rejected every sample and the detector never fired.
+            if (bufAcc.size >= GRAVITY_MIN_SAMPLES &&
+                (bufAcc.size % GRAVITY_REFRESH_SAMPLES == 0 || !gravityEstablished)
+            ) {
+                gravity = Features.gravityDirection(bufAcc.toTypedArray())
+                gravityEstablished = true
+            }
+
+            // Whether the vehicle is standing still is a property of the IMU,
+            // not of the filter, so this runs before the early return. Putting
+            // it after meant it never ran until the first GNSS fix arrived --
+            // and "no fix yet" is exactly when a stale speed does the damage.
+            //
+            // No reference is passed until gravity has actually been measured:
+            // a guessed vertical would reject good samples, and reporting
+            // "moving" when at rest is the failure this whole detector exists
+            // to prevent.
+            val atRest = stationary.update(
+                a, g, elapsedS, if (gravityEstablished) gravity else null,
+            )
+
             val f = ekf ?: return
 
             // Yaw rate needs only the gravity direction, not a full alignment,
@@ -140,6 +183,12 @@ class NavigationEngine {
             // offline. Re-enable only after the ablation is re-run on device.
             f.propagate(yawRate, null, dt)
             f.updateAckermann(yawRate)
+
+            // Zero-velocity update. Without this a phone at rest holding a bad
+            // speed from a weak fix dead-reckons away forever: observed on
+            // hardware running at 4.1 m/s on a desk while sigma grew from 24 m
+            // to 33 m. The IMU knew all along.
+            if (atRest) f.updateSpeed(0.0, sigma = 0.05)
 
             if (!lastEast.isNaN() && fsm.deadReckoning) {
                 distanceSinceLossM += hypot(f.east - lastEast, f.north - lastNorth)
@@ -258,6 +307,8 @@ class NavigationEngine {
             lastEast = Double.NaN
             lastNorth = Double.NaN
             alignment = Alignment.identity()
+            gravityEstablished = false
+            stationary.reset()
             bufAcc.clear(); bufGyr.clear(); bufSpeed.clear(); bufTime.clear()
             bufferSeconds = 0.0
         }
