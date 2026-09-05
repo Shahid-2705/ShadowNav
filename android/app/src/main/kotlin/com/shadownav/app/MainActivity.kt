@@ -175,7 +175,10 @@ class MainActivity : AppCompatActivity() {
         val controls = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
         }
-        blackoutButton = actionButton("SIMULATE TUNNEL", filled = false, colour = Palette.MAGENTA)
+        blackoutButton = actionButton(
+            "SIMULATE TUNNEL", filled = false, colour = Palette.MAGENTA,
+            description = "Press and hold to simulate a GNSS blackout",
+        )
         // Press and hold rather than toggle: a blackout is a thing you are
         // doing, and holding makes the demo impossible to leave switched on by
         // accident, which would silently invalidate everything after it.
@@ -191,7 +194,10 @@ class MainActivity : AppCompatActivity() {
                 else -> false
             }
         }
-        recordButton = actionButton("RECORD", filled = true, colour = Palette.CYAN)
+        recordButton = actionButton(
+            "RECORD", filled = true, colour = Palette.CYAN,
+            description = "Start recording this trip to a CSV file",
+        )
         recordButton.setOnClickListener { toggleRecording() }
         controls.addView(blackoutButton)
         controls.addView(recordButton)
@@ -337,10 +343,12 @@ class MainActivity : AppCompatActivity() {
         if (rec.isRecording) {
             val file = rec.stop()
             recordButton.text = "RECORD"
+            recordButton.contentDescription = "Start recording this trip to a CSV file"
             if (file != null && file.exists()) shareTrip(file)
         } else {
             val file = rec.start()
             recordButton.text = "STOP & SHARE"
+            recordButton.contentDescription = "Stop recording and share the trip file"
             Toast.makeText(this, "recording to ${file.name}", Toast.LENGTH_SHORT).show()
         }
     }

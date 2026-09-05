@@ -43,6 +43,41 @@ needs 33 and is treated as opportunistic, never required.
 | **Live diagnostics** | Measured IMU rate, satellites in fix, C/N0, NavIC, AGC state, alignment quality, and gate statistics. |
 | **Stationary hold** | Zero-velocity update when the IMU says the vehicle is parked. |
 
+## Accessibility
+
+Contrast was measured, not eyeballed. Nine of ten pairs already cleared WCAG AA;
+`SLATE` at 4.27:1 did not, and it carried the idle chip — the first thing anyone
+sees. Now #8492A1 at 5.72:1. Every ratio sits next to its constant in
+`Ui.kt` so an edit cannot quietly regress it.
+
+| Foreground on panel | Ratio | |
+|---|---|---|
+| TEXT | 14.40 | AAA |
+| CYAN — GNSS aided | 11.38 | AAA |
+| GOOD — tight confidence | 10.17 | AAA |
+| AMBER — degraded | 8.43 | AAA |
+| SLATE — idle chip | 5.72 | AA |
+| MAGENTA — dead reckoning | 5.23 | AA |
+| DIM — labels, telemetry | 5.16 | AA |
+
+Three interaction gaps were real and are fixed:
+
+- **Touch targets** were ~43 dp, under the 48 dp floor. Now 60 dp minimum,
+  deliberately above it — these are pressed in a moving vehicle.
+- **No pressed or focus feedback.** The buttons were bare `TextView`s, so a
+  press that failed to register looked identical to one that worked. During a
+  blackout demo the app changing behaviour is the thing you are watching for, so
+  there was no fallback signal either. Now a bounded ripple plus a visible focus
+  ring, which also makes the app operable from a keyboard or switch device.
+- **Nothing announced anything.** Every metric now reads its caption with its
+  value, the chip reads the mode in words, the confidence bar reads its radius
+  in metres, and the track reads mode, distance and dead-reckoned point count.
+  **Colour reinforces state everywhere and encodes it nowhere.**
+
+Type sizes were raised throughout (labels 11→13sp, telemetry 11.5→14sp, primary
+metrics 26→30sp). Small caps at arm's length in a moving car is the wrong
+economy, and `sp` scales with the user's font-size setting.
+
 ## Why `shadownav-core` has no Android dependency
 
 Because it has to be *provably* identical to the Python implementation, and that

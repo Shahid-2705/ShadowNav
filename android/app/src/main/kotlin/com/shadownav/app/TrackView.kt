@@ -62,6 +62,15 @@ class TrackView @JvmOverloads constructor(
     }
 
     fun push(snapshot: NavigationEngine.Snapshot) {
+        // The map is the primary visual and previously announced nothing at all.
+        contentDescription = if (!snapshot.hasFix) {
+            "track map, waiting for a first position fix"
+        } else {
+            "track map, %s, %.0f metres travelled, %d dead-reckoned points".format(
+                snapshot.mode.name.replace('_', ' ').lowercase(),
+                snapshot.tripDistanceM, trackDr.size,
+            )
+        }
         if (!snapshot.hasFix) return
         val p = floatArrayOf(snapshot.eastM.toFloat(), snapshot.northM.toFloat())
         val dr = snapshot.mode == GnssMode.DEAD_RECKONING ||
