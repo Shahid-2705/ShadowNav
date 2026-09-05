@@ -6,6 +6,9 @@ appcompat = "1.7.0"
 material = "1.12.0"
 lifecycle = "2.8.7"
 junit = "4.13.2"
+# Confirmed live on Maven Central 2026-09-05 (search-first, per blueprint Step 1
+# task 1). Filament moves fast -- re-check before bumping, don't assume stale.
+filament = "1.75.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -13,6 +16,12 @@ androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 androidx-lifecycle-service = { group = "androidx.lifecycle", name = "lifecycle-service", version.ref = "lifecycle" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+# Raw Filament, not SceneView: SceneView's current 4.x line is Compose-native
+# and pulls in the whole Compose runtime, which this project deliberately has
+# never added (see Ui.kt's file comment). Filament is a plain SurfaceView/
+# TextureView API. See plans/shadownav-3d-mvp-web-deck.md Step 1 and its
+# anti-patterns section for the full decision record.
+filament-android = { group = "com.google.android.filament", name = "filament-android", version.ref = "filament" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

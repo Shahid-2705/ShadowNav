@@ -13,6 +13,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ViewGroup
@@ -83,6 +84,15 @@ class MainActivity : AppCompatActivity() {
         recorder = TripRecorder(this)
         setContentView(buildUi())
         track.conformalLambda = loadConformalLambda()
+
+        // Step 1 of the 3D-rendering blueprint: log-only for now, no UI or
+        // engine change yet. This is what Step 1's "on-device smoke
+        // benchmark" exit criterion actually runs -- once a device is
+        // reachable, `adb logcat -s ShadowNav` shows the measured tier.
+        // Step 2 wires the result into an actual RenderTier-gated view.
+        DeviceCapabilityProbe(this).resolveTier { tier ->
+            Log.i("ShadowNav", "capability probe -> $tier")
+        }
 
         val probe = SensorCapture(getSystemService(SENSOR_SERVICE) as SensorManager) { _, _, _ -> }
         if (!probe.hasRequiredSensors) {
