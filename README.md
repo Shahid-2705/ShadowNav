@@ -13,6 +13,7 @@ Every commercial GNSS-denied dead-reckoning system (Baidu VDR, Amap's tunnel mod
 - **[PLAN.md](PLAN.md)** — the buildable project plan: positioning, full architecture with data contracts, phased build order, validation targets, risk register. Start here.
 - **[research/SIH26168-dead-reckoning-research.md](research/SIH26168-dead-reckoning-research.md)** — technical dossier: paper deep-reads (DMDVDR/AVNet, GNIO, FDIO, WiCHINS, PiDR), dataset survey, competitor landscape, cross-domain technique transfer.
 - **[research/SIH26168-open-track-findings.md](research/SIH26168-open-track-findings.md)** — verification pass on nine proposed features, with buildable/not-buildable verdicts. Read before claiming anything is novel.
+- **[research/SIH26168-external-review-response.md](research/SIH26168-external-review-response.md)** — response to an external 7.5/10 review that evaluated *pedestrian* DR by mistake. Carries the corrected weighted scorecard (4.1/10 today → 6.2/10 at MVP), the PDR→vehicle translation table, and the low-end-device hardware decision.
 - **[demo/](demo/)** — single-file WebGL presentation demo (`gnss-demo.html`) simulating the GNSS-blackout → dead-reckoning → re-acquisition cycle for live pitching.
 
 ## Status

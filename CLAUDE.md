@@ -19,6 +19,8 @@ A rendered version (tables + architecture diagram, research-only, predates the m
 
 **[research/SIH26168-open-track-findings.md](research/SIH26168-open-track-findings.md)** is a verification pass on nine proposed features/tracks, run after a collaborator caught two factual errors in the dossier. Read it before claiming anything is novel or starting any of: jamming-vs-blockage detection, online self-calibration, map coupling, conformal confidence, Ackermann/MoE/Mamba work, or IO-VNBD pipeline setup. It contains the schema gotchas, the FTO/patent landscape, and a per-feature buildable/not-buildable verdict.
 
+**[research/SIH26168-external-review-response.md](research/SIH26168-external-review-response.md)** is the response to an external 7.5/10 review that turned out to evaluate *pedestrian* dead reckoning by mistake. Read it before responding to any outside critique, before quoting a score, and before adding a sensor: it holds the corrected weighted scorecard (4.1/10 today, 6.2/10 at MVP, weights published and reproducible), a full PDR→vehicle translation table, the **target-hardware decision (low-end Android, API 29 floor)** with the four architectural consequences that follow, and two further banned claims.
+
 **[PLAN.md](PLAN.md) is the buildable project plan** — positioning, full component-by-component architecture with data contracts, added-features detail, phased build order, validation targets, and a risk register. Read this before starting implementation.
 
 Status as of 2026-09-04: planning complete, no implementation started yet.
