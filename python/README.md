@@ -20,21 +20,31 @@ Kanarachos & Szkolnik (arXiv:2005.01701) in any writeup.
 
 ```
 shadownav/
-  data/      IO-VNBD loading, schema resolution, defect repair, fetching
-  evaluation/ synthetic outage masking, metrics, the published split
-  baselines/ naive strapdown INS — the drift floor
-  utils/     determinism
-  geo.py     WGS84 -> local ENU
+  data/       IO-VNBD loading, schema resolution, defect repair, fetching
+  evaluation/ outage masking, metrics, the published split, conformal calibration
+  baselines/  naive strapdown INS — the drift floor
+  filter/     21-state strapdown EKF, 5-state kinematic EKF, alignment, GNSS FSM
+  models/     invariant features, CNN+GRU speed net, inference adapter
+  utils/      determinism
+  geo.py      WGS84 -> local ENU
+  pipeline_kinematic.py   the deployed end-to-end estimator
 scripts/
-  audit_gps_rate.py   measures the real GPS fix rate (see below)
-  run_baseline.py     produces eval/results/baseline_naive.json
+  audit_gps_rate.py       measures the real GPS fix rate
+  run_baseline.py         -> eval/results/baseline_naive.json
+  run_mvp.py              -> eval/results/kinematic*.json
+  train_speednet.py       -> shared/speednet.pt
+  calibrate_confidence.py -> eval/results/conformal_calibration.json
 ```
 
 ## Reproducing the numbers
 
 ```bash
-PYTHONPATH=. python scripts/audit_gps_rate.py    # -> eval/results/gps_rate_audit.json
-PYTHONPATH=. python scripts/run_baseline.py      # -> eval/results/baseline_naive.json
+PYTHONPATH=. python scripts/audit_gps_rate.py        # dataset fix-rate audit
+PYTHONPATH=. python scripts/run_baseline.py          # the drift floor
+PYTHONPATH=. python scripts/run_mvp.py               # the MVP estimator
+PYTHONPATH=. python scripts/train_speednet.py --ablate   # speed net + ablation
+PYTHONPATH=. python scripts/run_mvp.py --speednet    # MVP with the learned front end
+PYTHONPATH=. python scripts/calibrate_confidence.py  # conformal inflation
 ```
 
 Both are seeded (`shadownav.utils.seed.DEFAULT_SEED = 20260905`) and reproduce
@@ -60,7 +70,7 @@ update, i.e. fixes repeating in blocks of ~10. Measured across 29.7 h and
 | Sessions consistent with 1 Hz | all | **3 / 79** |
 | Vehicle travel between fixes | ~2.8 m | **27.1 m** (max 70 m) |
 
-There are only **14,212 real position observations in the whole dataset**. This
+There are only **14,067 real position observations in the whole dataset**. This
 is not a detail — it sets what the data can and cannot answer:
 
 * a 10 s outage suppresses roughly one real fix, a 30 s outage roughly three;
@@ -71,10 +81,14 @@ So metrics are evaluated **only at rows carrying a real fix**, each result
 reports the actual elapsed time (which can exceed the requested horizon by up to
 one fix period), and `truth_gap_m` is reported alongside every number.
 
-A latitude-only change test reports the fix rate wrongly by an order of
-magnitude, because on a near-east/west drive latitude is constant to 6 decimal
-places for scores of rows while longitude advances every fix. Fix detection uses
-the whole GPS tuple.
+Fix detection keys on **latitude and longitude only**, and getting that wrong
+is possible in both directions. Latitude alone reports the rate wrongly by an
+order of magnitude: on a near-east/west drive it is constant to 6 decimal places
+for scores of rows while longitude advances at every fix. The whole GPS tuple is
+equally wrong the other way — course and reported accuracy jitter every sample
+while the vehicle is stationary, so S-Y1 reported 785 "fixes", most of them at
+zero speed with the vehicle not moving, and the filter believed it was being
+corrected when it was not.
 
 ### 2. Excel date corruption of the satellite column
 
@@ -142,3 +156,96 @@ opportunistic-calibration decision already in the plan.
 without it, "the naive baseline drifts badly" is not evidence of anything,
 because a broken integrator also drifts badly. It integrates 20 s of coherent
 synthetic data with exact initial attitude and requires under 5% divergence.
+
+## Two filters, and why
+
+`filter/ekf.py` is a 21-state strapdown error-state EKF with its transition and
+measurement Jacobians verified against finite differences of the nonlinear
+propagation (`tests/test_ekf.py`). That check is the point: a hand-derived
+Jacobian that is never verified is the classic way a Kalman filter ends up
+running fine while its covariance is quietly wrong.
+
+It still cannot be used on IO-VNBD. The phone logs at 10 Hz, so the
+accelerometer is aliased rather than merely coarse, and with GNSS fixes 9 s
+apart there are ~90 free double-integration steps between corrections. Any
+attitude error becomes `0.5·g·sin(tilt)·t²` of position error — at 9 s, a 2°
+tilt is 14 m and a 20° tilt is 140 m. Run on this data it reached 5×10⁴ m/s.
+
+`filter/kinematic.py` is the deployed path: five states (east, north, heading,
+speed, gyro bias), heading integrated from the gyroscope, speed held. It never
+double-integrates acceleration. Keep the strapdown for the Android app, where
+the IMU runs at 100–200 Hz.
+
+## Device-to-car alignment is a prerequisite
+
+A phone sits at an arbitrary orientation in the vehicle, so the nonholonomic
+constraint — no lateral or vertical velocity **in the car frame** — cannot be
+applied until that rotation is known. Applying it in the phone's frame gave
+1,312 m at a 10 s horizon, four times *worse* than an unaided strapdown.
+
+`filter/alignment.py` recovers it from the correlation between horizontal
+specific force and GNSS-derived longitudinal acceleration, and reports a
+quality score; below threshold the constraint is disabled rather than applied
+in the wrong frame. Observable in ~84% of runs.
+
+One detail that decides whether it works at all: pair each interval's *mean*
+horizontal specific force with that interval's mean acceleration. Pairing
+against a single endpoint sample returned quality 0.0 on every sequence — the
+estimator silently never worked. GNSS fixes are 9 s apart, so `dv/dt` is
+already an interval average, and matching a smoothed quantity against an
+unsmoothed one collapses the correlation into noise.
+
+## Honest confidence
+
+The filter is overconfident by more than an order of magnitude. On held-out
+routes, nominal 90% ellipses contain **17%** of errors:
+
+| Horizon | λ | NEES median | Coverage raw | Coverage calibrated |
+|---|---|---|---|---|
+| 10 s | 21.8 | 152.8 | 0.02 | 1.00 |
+| 30 s | 15.5 | 130.4 | 0.11 | 0.91 |
+| 60 s | 17.1 | 62.6 | 0.15 | 0.95 |
+| 120 s | 17.0 | 25.7 | 0.22 | 1.00 |
+| 180 s | 14.7 | 18.5 | 0.35 | 1.00 |
+| **mean** | | | **0.17** | **0.97** |
+
+`evaluation/conformal.py` fits one scalar inflation factor per horizon on the
+val fold and measures containment on test, which the factors never saw. It
+overshoots the nominal 90% because the fitting sets are 22–40 points and the
+split-conformal quantile is conservative at that size — conservative is the
+safe direction.
+
+**Say "empirically calibrated coverage on held-out routes". Never
+"guaranteed".** Trajectory errors are autocorrelated within an outage and grow
+with elapsed time, so exchangeability fails and the conformal guarantee does
+not hold. Fitting per horizon removes the largest part of that violation, which
+is why the factors are stratified rather than pooled.
+
+## The learned speed front end
+
+`models/speednet.py` — DeepOdo/DeepOri convolutions and a GRU, plus GNIO's
+Motion Bank and gated head. **128,083 parameters: 0.51 MB fp32, ~0.13 MB INT8**,
+against a 5 MB budget.
+
+Three design choices worth knowing:
+
+- **Rotation-invariant features, not raw axes.** There are only ~14,000 speed
+  labels in the whole dataset, one per real GNSS fix. That is far too few to
+  learn 3-D rotation invariance from scratch, and a network that half-learns it
+  generalises to a new mounting by luck. The six channels depend on the device
+  frame only through the gravity direction.
+- **Last-known GNSS speed is deliberately not an input.** Feeding it lets the
+  network minimise its loss by echoing its input — excellent in training,
+  useless during the blackout it exists to survive.
+- **A [0,1] gate, not GNIO's Tanh.** GNIO's ablation validates Tanh for a
+  *signed displacement vector*; forward speed is a non-negative scalar, where a
+  [-1,1] gate can only reach zero by cancelling against the magnitude branch.
+  Sigmoid keeps the property that matters: a smooth drive to zero, i.e. a
+  differentiable ZUPT rather than a hard threshold. Both are selectable so the
+  choice is measured.
+
+Trained with the two-stage TLIO/GNIO schedule — MSE first, then Gaussian NLL.
+Training NLL from scratch lets a model escape by predicting a huge variance
+everywhere. The predicted sigma becomes the filter's measurement noise, so a
+network that knows it is guessing widens the gate instead of dragging the
+estimate.
