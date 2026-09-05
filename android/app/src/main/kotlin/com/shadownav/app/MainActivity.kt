@@ -355,23 +355,56 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
-        speed.set(if (s.hasFix) "%.0f".format(s.speedMs * 3.6) else "--")
-        heading.set(
-            if (s.hasFix) "%.0f°".format((Math.toDegrees(s.headingRad) + 360) % 360) else "--",
-        )
-        // The calibrated radius, never the raw covariance: raw understates by
-        // 15-22x, and a confidence display that wrong is worse than none.
-        val radius = s.sigmaM * track.conformalLambda * 2.146
-        confidence.set(
-            if (radius.isFinite()) "%.0f m".format(radius) else "--",
-            when {
-                !radius.isFinite() -> Palette.TEXT
-                radius < 15 -> Palette.GOOD
-                radius < 45 -> Palette.AMBER
-                else -> Palette.MAGENTA
-            },
-        )
-        confidenceBar.sigmaM = radius
+        // Computed once, shared by the recorder and the map route view
+        // (blueprint Step 3: "feed it from the same data path", not a
+        // second one) -- estimateLatLon() is null before the first fix,
+        // same as TrackView's own "waiting for first fix" treatment. Moved
+        // up so its result (and pushMapRoute's) can drive the headline
+        // metrics below, not just the map.
+        val ll = svc.engine.estimateLatLon()
+        val synthetic = pushMapRoute(s, ll)
+
+        // KM/H, HEADING and 90% RADIUS only ever read the real filter
+        // snapshot, which stays empty for the entire SIMULATE TUNNEL /
+        // debug-harness demo (no real fix indoors) -- real-device testing
+        // found this looked broken (numbers just blank while the map showed
+        // a moving vehicle). When a synthetic tick is active, mirror it into
+        // the same three readouts using the exact same formatting/colour
+        // rules as the real path, so the whole screen tells one consistent
+        // story instead of half of it going quiet.
+        if (synthetic != null) {
+            speed.set("%.0f".format(synthetic.speedMs * 3.6))
+            heading.set("%.0f°".format((Math.toDegrees(synthetic.headingRad) + 360) % 360))
+            val radius = synthetic.sigmaM * track.conformalLambda * 2.146
+            confidence.set(
+                "%.0f m".format(radius),
+                when {
+                    radius < 15 -> Palette.GOOD
+                    radius < 45 -> Palette.AMBER
+                    else -> Palette.MAGENTA
+                },
+            )
+            confidenceBar.sigmaM = radius
+        } else {
+            speed.set(if (s.hasFix) "%.0f".format(s.speedMs * 3.6) else "--")
+            heading.set(
+                if (s.hasFix) "%.0f°".format((Math.toDegrees(s.headingRad) + 360) % 360) else "--",
+            )
+            // The calibrated radius, never the raw covariance: raw
+            // understates by 15-22x, and a confidence display that wrong is
+            // worse than none.
+            val radius = s.sigmaM * track.conformalLambda * 2.146
+            confidence.set(
+                if (radius.isFinite()) "%.0f m".format(radius) else "--",
+                when {
+                    !radius.isFinite() -> Palette.TEXT
+                    radius < 15 -> Palette.GOOD
+                    radius < 45 -> Palette.AMBER
+                    else -> Palette.MAGENTA
+                },
+            )
+            confidenceBar.sigmaM = radius
+        }
 
         val rec = recorder
         tripStats.text = buildString {
@@ -414,11 +447,6 @@ class MainActivity : AppCompatActivity() {
 
         track.push(s)
 
-        // Computed once, shared by the recorder and the map route view
-        // (blueprint Step 3: "feed it from the same data path", not a
-        // second one) -- estimateLatLon() is null before the first fix,
-        // same as TrackView's own "waiting for first fix" treatment.
-        val ll = svc.engine.estimateLatLon()
         if (rec?.isRecording == true) {
             rec.record(
                 s, sensors.measuredAccelHz,
@@ -426,37 +454,52 @@ class MainActivity : AppCompatActivity() {
                 s.simulatedBlackout,
             )
         }
-        pushMapRoute(s, ll)
     }
 
-    /** Routes real (or, in debug mode, synthetic) position data to
-     *  [MapRouteView]. Debug mode never touches [NavigationEngine] --
-     *  it feeds a small synthetic path near the bundled tileset's own
-     *  region instead, which is the only way to see the dynamic trail/
-     *  ring/vehicle layers render without a live outdoor fix, since real
-     *  GNSS fixes on this device are wherever the device actually is, not
-     *  necessarily inside the bundled placeholder tileset's coverage
-     *  (PLAN.md Step 0/3). */
-    private fun pushMapRoute(s: NavigationEngine.Snapshot, ll: DoubleArray?) {
-        val route = mapRoute ?: return
+    /** Routes real (or synthetic) position data to [MapRouteView]. The
+     *  synthetic path is used in two cases, neither of which touches
+     *  [NavigationEngine]: the UI-layer debug harness (long-press the chip),
+     *  and -- found necessary by real-device testing -- the real SIMULATE
+     *  TUNNEL button pressed before any real GPS fix has ever landed.
+     *  `estimateLatLon()` returns null until `NavigationEngine`'s EKF is
+     *  initialised, which only happens in `onFix()`, so without this the
+     *  real button would visibly do nothing on the map when tested indoors,
+     *  the exact bug real-device testing surfaced -- see also [uiState]'s
+     *  ordering fix for the matching chip/orb symptom. Both give an honest
+     *  demo affordance in the one place (no sky visibility) it would
+     *  otherwise be impossible to show at all.
+     *
+     *  Returns the synthetic tick's data when one was pushed, so [render]
+     *  can mirror it into the KM/H, HEADING and 90% RADIUS readouts too --
+     *  `null` means real data was used (or nothing was pushed at all), and
+     *  the caller should fall back to the real snapshot as before. */
+    private fun pushMapRoute(s: NavigationEngine.Snapshot, ll: DoubleArray?): MapRouteView.SyntheticFix? {
+        val route = mapRoute ?: return null
         val debugMode = debugStateOverride
-        if (debugMode == null) {
+        val realButtonWithoutFix = debugMode == null && !s.hasFix && s.simulatedBlackout
+
+        if (debugMode == null && !realButtonWithoutFix) {
             route.push(s, ll?.get(0) ?: Double.NaN, ll?.get(1) ?: Double.NaN)
-            return
+            return null
         }
-        if (debugMode == UiSignalState.ACQUIRING) return // matches "no fix yet": nothing to push
-        val t = android.os.SystemClock.elapsedRealtime() / 1000.0
-        val lat = MapRouteView.PLACEHOLDER_LAT + 0.001 * kotlin.math.sin(t * 0.3)
-        val lon = MapRouteView.PLACEHOLDER_LON + 0.001 * kotlin.math.cos(t * 0.3)
-        val mode = when (debugMode) {
-            UiSignalState.SIMULATED_BLACKOUT, UiSignalState.DEAD_RECKONING -> GnssMode.DEAD_RECKONING
-            UiSignalState.AIDED -> GnssMode.AIDED
-            UiSignalState.DEGRADED -> GnssMode.DEGRADED
-            UiSignalState.REACQUIRING -> GnssMode.REACQUIRING
-            UiSignalState.ACQUIRING -> return
+        if (debugMode == UiSignalState.ACQUIRING) return null // matches "no fix yet": nothing to push
+
+        // MapRouteView.pushSynthetic() walks a real road pulled from the
+        // bundled tileset's own data (see its file comment) -- real-device
+        // feedback specifically asked for the simulated path to depict the
+        // product's actual story, not an arbitrary shape.
+        val mode = if (realButtonWithoutFix) {
+            GnssMode.DEAD_RECKONING
+        } else {
+            when (debugMode) {
+                UiSignalState.SIMULATED_BLACKOUT, UiSignalState.DEAD_RECKONING -> GnssMode.DEAD_RECKONING
+                UiSignalState.AIDED -> GnssMode.AIDED
+                UiSignalState.DEGRADED -> GnssMode.DEGRADED
+                UiSignalState.REACQUIRING -> GnssMode.REACQUIRING
+                UiSignalState.ACQUIRING, null -> return null
+            }
         }
-        val synthetic = s.copy(hasFix = true, mode = mode, sigmaM = 15.0, simulatedBlackout = false)
-        route.push(synthetic, lat, lon)
+        return route.pushSynthetic(mode)
     }
 
     // ----------------------------------------------------------- recording

@@ -14,6 +14,13 @@ import com.shadownav.core.GnssMode
  * disagree about what's currently true, which matters because
  * `!s.hasFix -> "ACQUIRING"` exists specifically to avoid asserting a GNSS
  * lock before any fix has ever arrived (see the comment this replaced).
+ *
+ * `simulatedBlackout` is checked *before* `!hasFix` (real-device testing
+ * during the map-upgrade task found the opposite order silently ate the
+ * SIMULATE TUNNEL button's entire effect when tested indoors, where a real
+ * fix never lands): holding that button is a deliberate, explicit user
+ * action, and SIMULATED_BLACKOUT never asserts a real signal state the way
+ * AIDED would, so there is no honesty reason to let "no fix yet" mask it.
  */
 enum class UiSignalState(val label: String, val colour: Int) {
     ACQUIRING("ACQUIRING", Palette.SLATE),
@@ -25,8 +32,8 @@ enum class UiSignalState(val label: String, val colour: Int) {
 }
 
 fun uiState(s: NavigationEngine.Snapshot): UiSignalState = when {
-    !s.hasFix -> UiSignalState.ACQUIRING
     s.simulatedBlackout -> UiSignalState.SIMULATED_BLACKOUT
+    !s.hasFix -> UiSignalState.ACQUIRING
     s.mode == GnssMode.AIDED -> UiSignalState.AIDED
     s.mode == GnssMode.DEGRADED -> UiSignalState.DEGRADED
     s.mode == GnssMode.REACQUIRING -> UiSignalState.REACQUIRING

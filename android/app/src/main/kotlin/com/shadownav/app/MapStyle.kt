@@ -49,14 +49,18 @@ object MapStyle {
         { "id": "landcover", "type": "fill", "source": "basemap", "source-layer": "landcover",
           "paint": { "fill-color": "#0C1015" } },
         { "id": "buildings", "type": "fill-extrusion", "source": "basemap", "source-layer": "building",
+          "minzoom": 14,
           "paint": {
             "fill-extrusion-color": "#1B2530",
             "fill-extrusion-height": ["coalesce", ["get", "render_height"], 6.0],
             "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0.0],
-            "fill-extrusion-opacity": 0.88
+            "fill-extrusion-opacity": ["interpolate", ["linear"], ["zoom"], 14, 0.0, 15.5, 0.88]
           } },
         { "id": "roads", "type": "line", "source": "basemap", "source-layer": "transportation",
-          "paint": { "line-color": "#1B2530", "line-width": 1.2 },
+          "paint": {
+            "line-color": "#2A3844",
+            "line-width": ["interpolate", ["linear"], ["zoom"], 10, 0.6, 16, 2.2, 19, 4.0]
+          },
           "layout": { "line-cap": "round", "line-join": "round" } }
       ]
     }

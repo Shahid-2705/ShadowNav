@@ -57,6 +57,19 @@ class UiSignalStateTest {
     }
 
     @Test
+    fun `simulated blackout wins even before the first fix`() {
+        // Regression test: real-device testing during the map-upgrade task
+        // found the SIMULATE TUNNEL button appeared to do nothing at all
+        // when tested indoors, where hasFix never becomes true. The button
+        // is a deliberate user action and must never be silently masked by
+        // "no fix yet."
+        assertEquals(
+            UiSignalState.SIMULATED_BLACKOUT,
+            uiState(snapshot(hasFix = false, mode = GnssMode.AIDED, simulatedBlackout = true)),
+        )
+    }
+
+    @Test
     fun `aided mode with a fix is GNSS AIDED`() {
         assertEquals(UiSignalState.AIDED, uiState(snapshot(mode = GnssMode.AIDED)))
     }
