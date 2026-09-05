@@ -18,7 +18,8 @@ RESULTS = Path(__file__).resolve().parents[2] / "eval" / "results"
 KNOWN = {
     "baseline_naive": ("naive strapdown (floor)", False),
     "kinematic": ("kinematic MVP", False),
-    "kinematic_speednet": ("kinematic + speed net", False),
+    "kinematic_ctrl8": ("kinematic (8-seq control)", False),
+    "kinematic_speednet": ("kinematic + speed net (8-seq)", False),
     "kinematic_no_ack": ("  ablation: no Ackermann", True),
     "kinematic_cent": ("  ablation: + L_cent", True),
     "kinematic_accel": ("  ablation: + accel speed", True),
