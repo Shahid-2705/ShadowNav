@@ -10,8 +10,12 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -45,6 +49,11 @@ class MainActivity : AppCompatActivity(), SensorCapture.Listener, GnssCapture.Li
     private val ui = Handler(Looper.getMainLooper())
     private var running = false
 
+    /** Wall-clock of the last diagnostic log line. The UI refreshes at 10 Hz;
+     *  logging at that rate would flood logcat and change the thing being
+     *  measured. Once a second is enough to see a rate settle or a mode flip. */
+    private var lastLogMs = 0L
+
     private val refresh = object : Runnable {
         override fun run() {
             render()
@@ -76,7 +85,13 @@ class MainActivity : AppCompatActivity(), SensorCapture.Listener, GnssCapture.Li
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(0xFF07090C.toInt())
-            setPadding(0, 0, 0, 0)
+        }
+        // Without this the mode label renders underneath the status bar and is
+        // unreadable against the clock. Observed on a moto g64.
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(0, bars.top, 0, bars.bottom)
+            insets
         }
 
         modeLabel = TextView(this).apply {
@@ -127,11 +142,16 @@ class MainActivity : AppCompatActivity(), SensorCapture.Listener, GnssCapture.Li
 
     private fun render() {
         val s = engine.snapshot()
-        modeLabel.text = s.mode.name.replace('_', ' ')
+        // Before the first fix the filter has not started, so the state machine
+        // has not run either and still reads AIDED. Showing that would claim
+        // GNSS aiding while there is no fix at all, which is exactly the kind
+        // of confident-and-wrong display this project exists to avoid.
+        modeLabel.text = if (s.hasFix) s.mode.name.replace('_', ' ') else "ACQUIRING"
         modeLabel.setTextColor(
-            when (s.mode) {
-                GnssMode.AIDED -> 0xFF4DE0E8.toInt()
-                GnssMode.DEGRADED -> 0xFFE8A33D.toInt()
+            when {
+                !s.hasFix -> 0xFF7C8A99.toInt()
+                s.mode == GnssMode.AIDED -> 0xFF4DE0E8.toInt()
+                s.mode == GnssMode.DEGRADED -> 0xFFE8A33D.toInt()
                 else -> 0xFFE24DBE.toInt()
             }
         )
@@ -175,6 +195,38 @@ class MainActivity : AppCompatActivity(), SensorCapture.Listener, GnssCapture.Li
         }
 
         track.push(s)
+        logPeriodically(s)
+    }
+
+    /**
+     * One diagnostic line per second to logcat.
+     *
+     * Exists so a drive can be reviewed afterwards, and so the app can be
+     * verified over adb without reading the screen. The IMU rate leads the line
+     * deliberately: it is the variable every offline result depended on.
+     */
+    private fun logPeriodically(s: NavigationEngine.Snapshot) {
+        val now = System.currentTimeMillis()
+        if (now - lastLogMs < 1000) return
+        lastLogMs = now
+        val g = s.gnss
+        // The whole concatenation must be parenthesised before .format():
+        // in Kotlin `.format()` binds tighter than `+`, so without the parens
+        // only the final literal is formatted and it receives all 18 arguments
+        // -- a %d against a Double, which throws at runtime.
+        Log.i(
+            TAG,
+            ("imu=%.0fHz gap=%.0fms mode=%s fix=%b v=%.1f hdg=%.0f sigma=%.1f " +
+                "tsf=%.1f dr=%.0fm sats=%d/%d cn0=%.1f navic=%d/%d alignQ=%.2f " +
+                "gps=%d/%d ovr=%d").format(
+                    sensors.measuredAccelHz, sensors.maxGapMs, s.mode.name, s.hasFix,
+                    s.speedMs, Math.toDegrees(s.headingRad), s.sigmaM,
+                    s.timeSinceFixS, s.distanceSinceLossM,
+                    g.satellitesUsed, g.satellitesVisible, g.meanCn0,
+                    g.navicVisible, g.navicUsed, s.alignmentQuality,
+                    s.gpsAccepted, s.gpsRejected, s.gateOverrides,
+                ),
+        )
     }
 
     /** Read the conformal inflation shipped from the Python calibration. */
@@ -243,5 +295,6 @@ class MainActivity : AppCompatActivity(), SensorCapture.Listener, GnssCapture.Li
 
     companion object {
         private const val REQ_LOCATION = 1001
+        private const val TAG = "ShadowNav"
     }
 }

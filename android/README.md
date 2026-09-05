@@ -97,6 +97,61 @@ inside a tunnel. `agcEverSeen` distinguishes "this device cannot" from "this
 device can but is currently silent", and that distinction is the difference
 between a claim that survives a judge's question and one that does not.
 
+## On-device results — moto g64 5G, Android 15
+
+First hardware run, 2026-09-05. Device: Motorola moto g64 5G, MediaTek MT6855,
+8 cores, Android 15 (API 35), arm64-v8a. A budget-class phone, which is the
+target.
+
+| | |
+|---|---|
+| IMU | InvenSense **ICM-456xy** |
+| **Measured accelerometer rate** | **401 Hz** (device advertises 400) |
+| Max inter-sample gap | 2 ms at rest, 22 ms across an app restart |
+| Crashes | none after the two fixes below |
+| App state | runs, renders, reports honestly |
+
+### The number that matters
+
+**401 Hz measured, against the 10 Hz of IO-VNBD.** That is a factor of 40, and
+it is the direct test of this project's central claim.
+
+Every negative result in the offline work — the 21-state strapdown diverging to
+5×10⁴ m/s, `L_cent` hurting rather than helping, the learned speed head barely
+beating a constant — was attributed to 10 Hz aliasing away the vibration
+signature that lives above 5 Hz. That attribution was an argument. It is now
+testable on hardware that delivers 40× the bandwidth, and re-running those three
+ablations here is the highest-value experiment left in the project.
+
+### Two bugs that only hardware could find
+
+**`SecurityException: To use the sampling rate of 0 microseconds, app needs to
+declare HIGH_SAMPLING_RATE_SENSORS`.** Since Android 12, requesting above
+200 Hz needs that permission, and `SENSOR_DELAY_FASTEST` (0 µs) qualifies. It
+**throws rather than degrading**, so the app crashed on launch. Now declared,
+and `SensorCapture` falls back to `SENSOR_DELAY_GAME` and raises a
+`[RATE DEGRADED]` flag if it is ever refused — a navigation app that dies
+because it could not have its preferred rate is worse than one that runs slower
+and says so.
+
+**The UI claimed `AIDED` with no fix.** Before the first fix the filter has not
+started, so the state machine has not run and still reads its initial value.
+Displaying that asserts GNSS aiding while there are zero satellites, which is
+precisely the confident-and-wrong display this project exists to avoid. It now
+shows `ACQUIRING` in grey until a fix exists. The mode label also rendered
+underneath the status bar; window insets are applied now.
+
+### Not yet measured
+
+No GNSS fix was obtained — the test was indoors, `sats 0/0`. Everything
+downstream of the first fix is therefore **untested on hardware**: filter
+initialisation, the alignment bootstrap, the blackout FSM, blend-back, and the
+NavIC panel. AGC reported `supported by API but not yet reported`, which is the
+honest third state and cannot be resolved without sky view.
+
+The remaining Phase E numbers — latency, battery drain, thermal behaviour over a
+sustained drive — still do not exist.
+
 ## Deliberate differences from the offline pipeline
 
 | | offline (10 Hz dataset) | on device |

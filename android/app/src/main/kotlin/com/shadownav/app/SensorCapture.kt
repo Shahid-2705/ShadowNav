@@ -47,6 +47,11 @@ class SensorCapture(
 
     private var thread: HandlerThread? = null
 
+    /** True when the fastest rate was refused and a slower one is in use.
+     *  Surfaced in the UI: a rate-dependent result must state its rate. */
+    var degraded = false
+        private set
+
     private val latestAccel = FloatArray(3)
     private val latestGyro = FloatArray(3)
     private var haveAccel = false
@@ -96,14 +101,28 @@ class SensorCapture(
         val t = HandlerThread("shadownav-imu").also { it.start() }
         thread = t
         val handler = Handler(t.looper)
-        // SENSOR_DELAY_FASTEST is a request, not a contract. measuredAccelHz
-        // reports what was actually delivered.
-        accelSensor?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_FASTEST, handler)
+        // SENSOR_DELAY_FASTEST is a request, not a contract, and on Android 12+
+        // it is refused outright without HIGH_SAMPLING_RATE_SENSORS -- with a
+        // thrown SecurityException rather than a slower rate. The manifest
+        // declares that permission, but an OEM or enterprise policy can still
+        // deny it, and a navigation app that crashes on startup because it
+        // could not have its preferred sample rate is worse than one that runs
+        // slower and says so. measuredAccelHz reports what actually arrived.
+        val fastest = registerAll(SensorManager.SENSOR_DELAY_FASTEST, handler)
+        if (!fastest) {
+            sensorManager.unregisterListener(this)
+            degraded = registerAll(SensorManager.SENSOR_DELAY_GAME, handler)
         }
-        gyroSensor?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_FASTEST, handler)
-        }
+    }
+
+    /** True if every available sensor registered at [rate]. */
+    private fun registerAll(rate: Int, handler: Handler): Boolean = try {
+        var ok = true
+        accelSensor?.let { ok = sensorManager.registerListener(this, it, rate, handler) && ok }
+        gyroSensor?.let { ok = sensorManager.registerListener(this, it, rate, handler) && ok }
+        ok
+    } catch (e: SecurityException) {
+        false
     }
 
     fun stop() {

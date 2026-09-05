@@ -5,6 +5,17 @@
          and per-constellation status require no Developer Options toggle. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
+    <!-- Required since Android 12 (API 31) to request sensor rates above
+         200 Hz. SENSOR_DELAY_FASTEST is 0 microseconds, which counts as
+         "above 200 Hz", and without this the registration throws a
+         SecurityException rather than degrading. It crashed on a moto g64
+         running Android 15 before this was declared.
+
+         It is a "normal" permission: granted at install, no runtime prompt.
+         Sample rate is the variable every result in this project depends on,
+         so asking for the maximum is not gold-plating. -->
+    <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
+
     <!-- Declared but not required: the app must run on a device with no
          gyroscope-quality guarantee, and it degrades rather than refusing. -->
     <uses-feature
