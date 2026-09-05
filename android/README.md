@@ -11,8 +11,8 @@ app/              Android — sensor capture, GNSS, UI.
 
 ```bash
 export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"
-gradle :shadownav-core:test      # the parity suite — run this first
-gradle :app:assembleDebug
+./gradlew :shadownav-core:test      # the parity suite — run this first
+./gradlew :app:assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
@@ -31,6 +31,17 @@ unhelpful `Invalid file path`.
 API 29 is set by the feature we actually want, not by habit:
 `GnssStatus.CONSTELLATION_IRNSS` — the NavIC enumeration — lands at 29. AGC
 needs 33 and is treated as opportunistic, never required.
+
+## Features
+
+| | |
+|---|---|
+| **Simulate tunnel** | Press and hold to discard GNSS fixes while keeping satellite telemetry live. Turns any road into a repeatable blackout test, which a real tunnel is not. Held rather than toggled so a demo cannot be left switched on by accident, silently invalidating everything after it. |
+| **Trip recording** | Writes a 26-column CSV and shares it. This is what closes the loop: the app has no ground truth, the offline pipeline has all the metrics, and until now nothing connected them. Column names match `shadownav/data/schema.py` where they overlap. |
+| **Trip summary** | Distance, duration, seconds spent dead reckoning, longest unaided run. |
+| **Calibrated confidence** | A 90% containment radius and a bar that turns amber then magenta, using the val-fitted conformal factors — never the raw covariance, which understates by 15–22×. |
+| **Live diagnostics** | Measured IMU rate, satellites in fix, C/N0, NavIC, AGC state, alignment quality, and gate statistics. |
+| **Stationary hold** | Zero-velocity update when the IMU says the vehicle is parked. |
 
 ## Why `shadownav-core` has no Android dependency
 

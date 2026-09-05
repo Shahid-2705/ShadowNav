@@ -50,6 +50,18 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.ShadowNav">
 
+        <!-- Shares a recorded trip CSV, and nothing else: the path config
+             exposes only the trips directory in app-private storage. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.trips"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <service
             android:name=".NavigationService"
             android:exported="false"

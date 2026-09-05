@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Only the trips directory is shared, and only from app-private external
+         storage. Nothing else the app writes is exposed. -->
+    <external-files-path name="trips" path="trips/" />
+</paths>

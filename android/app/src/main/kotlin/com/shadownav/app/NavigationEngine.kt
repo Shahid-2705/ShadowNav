@@ -60,6 +60,33 @@ class NavigationEngine {
 
     var minAlignmentQuality = 0.25
 
+    /**
+     * Simulated GNSS blackout: while set, fixes are received but discarded.
+     *
+     * The single most useful demo affordance in the app. Dead reckoning through
+     * an outage is the whole point of the system, and without this you can only
+     * show it by finding a real tunnel. With it, any road becomes a test: press
+     * the button, watch the estimate carry on, release it and watch the
+     * blend-back. It also makes the behaviour repeatable, which a tunnel is not.
+     *
+     * Deliberately discards at the *engine* boundary rather than unsubscribing
+     * from the receiver: a real blackout does not stop the GNSS chip, and
+     * keeping the satellite and C/N0 telemetry flowing is what lets the
+     * degradation readouts stay live during the demo.
+     */
+    @Volatile
+    var simulateBlackout = false
+
+    /** Live trip statistics, for the summary card. */
+    var tripDistanceM = 0.0
+        private set
+    var tripMaxDrDistanceM = 0.0
+        private set
+    var tripTimeInDrS = 0.0
+        private set
+    var tripDurationS = 0.0
+        private set
+
     private companion object {
         /** ~1 s at 400 Hz: enough for the vehicle's own accelerations to
          *  average out of the mean. */
@@ -82,6 +109,11 @@ class NavigationEngine {
         val aligned: Boolean,
         val stationary: Boolean,
         val stationaryDebug: String,
+        val simulatedBlackout: Boolean,
+        val tripDistanceM: Double,
+        val tripMaxDrDistanceM: Double,
+        val tripTimeInDrS: Double,
+        val tripDurationS: Double,
         val gnss: GnssCapture.Snapshot,
         val gpsAccepted: Int,
         val gpsRejected: Int,
@@ -117,6 +149,11 @@ class NavigationEngine {
             gpsAccepted = f?.diagnostics?.gpsAccepted ?: 0,
             gpsRejected = f?.diagnostics?.gpsRejected ?: 0,
             gateOverrides = f?.diagnostics?.gateOverrides ?: 0,
+            simulatedBlackout = simulateBlackout,
+            tripDistanceM = tripDistanceM,
+            tripMaxDrDistanceM = tripMaxDrDistanceM,
+            tripTimeInDrS = tripTimeInDrS,
+            tripDurationS = tripDurationS,
         )
     }
 
@@ -190,14 +227,25 @@ class NavigationEngine {
             // to 33 m. The IMU knew all along.
             if (atRest) f.updateSpeed(0.0, sigma = 0.05)
 
-            if (!lastEast.isNaN() && fsm.deadReckoning) {
-                distanceSinceLossM += hypot(f.east - lastEast, f.north - lastNorth)
+            tripDurationS = elapsedS
+            if (!lastEast.isNaN()) {
+                val step = hypot(f.east - lastEast, f.north - lastNorth)
+                tripDistanceM += step
+                if (fsm.deadReckoning) {
+                    distanceSinceLossM += step
+                    tripTimeInDrS += dt
+                    if (distanceSinceLossM > tripMaxDrDistanceM) {
+                        tripMaxDrDistanceM = distanceSinceLossM
+                    }
+                }
             }
             lastEast = f.east
             lastNorth = f.north
 
             val obs = GnssObservation(
-                available = fsm.timeSinceFixS < 2.0,
+                // A simulated blackout must look exactly like a real one to the
+                // state machine, or the demo proves nothing about the real case.
+                available = !simulateBlackout && fsm.timeSinceFixS < 2.0,
                 nSatsUsed = lastGnss.satellitesUsed,
                 cn0Mean = lastGnss.meanCn0,
                 accuracyM = Double.NaN,
@@ -235,6 +283,10 @@ class NavigationEngine {
 
     fun onFix(location: Location) {
         synchronized(lock) {
+            // Discarded here, not by unsubscribing: a real blackout does not
+            // stop the GNSS chip, so the satellite and C/N0 telemetry must keep
+            // flowing for the degradation readouts to stay live.
+            if (simulateBlackout && ekf != null) return
             if (refLat.isNaN()) {
                 refLat = location.latitude
                 refLon = location.longitude
@@ -296,6 +348,19 @@ class NavigationEngine {
     private fun ArrayDeque<Double>.toDoubleArray(): DoubleArray =
         DoubleArray(size) { this.elementAt(it) }
 
+    /** Current estimate as latitude/longitude, or null before the first fix.
+     *  Inverts the same tangent-plane projection used on the way in. */
+    fun estimateLatLon(): DoubleArray? = synchronized(lock) {
+        val f = ekf ?: return null
+        if (refLat.isNaN()) return null
+        val (mRad, nRad) = Geo.curvatureRadii(refLat)
+        val lat = refLat + Math.toDegrees(f.north / mRad)
+        val lon = refLon + Math.toDegrees(
+            f.east / (nRad * kotlin.math.cos(Math.toRadians(refLat)))
+        )
+        doubleArrayOf(lat, lon)
+    }
+
     fun reset() {
         synchronized(lock) {
             ekf = null
@@ -307,6 +372,10 @@ class NavigationEngine {
             lastEast = Double.NaN
             lastNorth = Double.NaN
             alignment = Alignment.identity()
+            tripDistanceM = 0.0
+            tripMaxDrDistanceM = 0.0
+            tripTimeInDrS = 0.0
+            tripDurationS = 0.0
             gravityEstablished = false
             stationary.reset()
             bufAcc.clear(); bufGyr.clear(); bufSpeed.clear(); bufTime.clear()
