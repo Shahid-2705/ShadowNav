@@ -28,7 +28,12 @@ venv/
 .vscode/
 
 # Claude Code local configuration: settings, agents, skills, session state.
-# Machine-specific and often carries local paths, so it does not belong in the
-# repo. Note this is the .claude/ DIRECTORY only -- CLAUDE.md at the repo root
-# is a deliberate, checked-in project document and stays tracked.
+# Machine-specific and often carries local paths.
 .claude/
+
+# Agent instructions. Kept out of the repo at the maintainer's request; the file
+# still exists locally and still steers sessions, it is simply not distributed.
+# Its substantive content -- the vehicle-not-pedestrian scope, the "read the
+# research dossiers before researching" rule -- is duplicated in README.md and
+# PLAN.md, which remain tracked.
+CLAUDE.md

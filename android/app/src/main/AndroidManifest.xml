@@ -1,9 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- ACCESS_FINE_LOCATION is the only permission needed. Raw GnssMeasurement
-         and per-constellation status require no Developer Options toggle. -->
+    <!-- ACCESS_FINE_LOCATION is the only location permission this app's own
+         code needs. Raw GnssMeasurement and per-constellation status require
+         no Developer Options toggle. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <!-- MapLibre Native's own manifest unconditionally declares INTERNET,
+         ACCESS_NETWORK_STATE, ACCESS_WIFI_STATE and ACCESS_COARSE_LOCATION,
+         for its optional network tile-fetching and built-in "my location"
+         layer, neither of which this app uses (blueprint Step 3: the route
+         scene loads only a bundled `mbtiles:///android_asset/...` source,
+         never a network style URL, and the vehicle position comes from this
+         app's own estimator, never MapLibre's location layer). Stripping
+         them keeps the shipped permission set honest to what the app
+         actually does, and preserves the "on-device, no cloud" pitch
+         (PLAN.md §3.8) that a bundled-but-still-network-permitted map would
+         otherwise quietly contradict. -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" tools:node="remove" />
 
     <!-- Required since Android 12 (API 31) to request sensor rates above
          200 Hz. SENSOR_DELAY_FASTEST is 0 microseconds, which counts as

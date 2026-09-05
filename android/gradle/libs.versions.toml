@@ -1,6 +1,9 @@
 [versions]
 agp = "8.7.3"
-kotlin = "2.0.21"
+# Bumped from 2.0.21 (blueprint Step 3): MapLibre Android SDK 13.6.0 ships
+# Kotlin metadata requiring 2.2.0+ ("Module was compiled with an incompatible
+# version of Kotlin" otherwise). 2.4.0 is current stable as of 2026-09-05.
+kotlin = "2.4.0"
 coreKtx = "1.13.1"
 appcompat = "1.7.0"
 material = "1.12.0"
@@ -9,6 +12,12 @@ junit = "4.13.2"
 # Confirmed live on Maven Central 2026-09-05 (search-first, per blueprint Step 1
 # task 1). Filament moves fast -- re-check before bumping, don't assume stale.
 filament = "1.75.1"
+# Confirmed live on Maven Central 2026-09-05 (search-first, blueprint Step 3).
+# Not Mapbox GL (paid) or the Google Maps SDK (billing-gated) -- MapLibre is
+# open-source with no per-request vendor gate, matching the same
+# anti-vendor-gate positioning as the Filament-over-SceneView choice in
+# Step 1 (PLAN.md §1's own pitch against Baidu's SDK-gated VDR).
+maplibre = "13.6.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -29,6 +38,7 @@ filament-android = { group = "com.google.android.filament", name = "filament-and
 # google/filament's sample-material-builder for the reference usage this
 # project's OrbMaterial.kt is based on.
 filamat-android = { group = "com.google.android.filament", name = "filamat-android", version.ref = "filament" }
+maplibre-android-sdk = { group = "org.maplibre.gl", name = "android-sdk", version.ref = "maplibre" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -46,7 +46,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var track: TrackView
     private lateinit var chip: StatusChip
     private lateinit var header: LinearLayout
+    private lateinit var mapCard: LinearLayout
     private var orb: FilamentOrbView? = null
+    private var mapRoute: MapRouteView? = null
+    private var attribution: TextView? = null
     private lateinit var capabilityProbe: DeviceCapabilityProbe
     private lateinit var subtitle: TextView
     private lateinit var speed: Metric
@@ -101,6 +104,7 @@ class MainActivity : AppCompatActivity() {
         capabilityProbe.resolveTier { tier ->
             Log.i("ShadowNav", "capability probe -> $tier")
             attachOrbIfWarranted(tier)
+            attachMapRouteIfWarranted(tier)
         }
 
         val probe = SensorCapture(getSystemService(SENSOR_SERVICE) as SensorManager) { _, _, _ -> }
@@ -193,7 +197,7 @@ class MainActivity : AppCompatActivity() {
 
         // -- map ---------------------------------------------------------
         track = TrackView(this)
-        val mapCard = card().apply { setPadding(dp(4f), dp(4f), dp(4f), dp(4f)) }
+        mapCard = card().apply { setPadding(dp(4f), dp(4f), dp(4f), dp(4f)) }
         mapCard.addView(track, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, dp(300f),
         ))

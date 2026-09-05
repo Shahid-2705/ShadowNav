@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -59,12 +61,21 @@ android {
     // `.filamat` is Filament's own compiled-material binary format; leaving
     // it compressed in the APK means decompressing it on every cold load for
     // no benefit (it's already a dense binary), per Filament's own samples.
+    // `.mbtiles` is a SQLite database -- MapLibre opens it in place from
+    // inside the APK's assets, which requires it be stored uncompressed.
     androidResources {
         noCompress += "filamat"
+        noCompress += "mbtiles"
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
+}
+
+// Kotlin 2.4's Gradle plugin removed the old `kotlinOptions { jvmTarget }`
+// DSL (blueprint Step 3, bumped from 2.0.21 for MapLibre compatibility) --
+// this is the replacement `compilerOptions` form.
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 
@@ -74,6 +85,7 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.filament.android)
+    implementation(libs.maplibre.android.sdk)
     // filamat-android (the runtime shader-compiler toolchain, measured at
     // ~8.9 MB) is deliberately NOT a dependency of the shipped app -- it was
     // used once, temporarily, to generate assets/materials/orb.filamat (see
