@@ -1,0 +1,13 @@
+{
+  "note": "Desktop CPU, single thread, float32 PyTorch. A proxy for a low-end phone core, not an on-device measurement.",
+  "variant": "full",
+  "n_parameters": 128083,
+  "checkpoint_mb": 0.524647,
+  "threads": 1,
+  "median_ms": 2.3571999990963377,
+  "p95_ms": 3.713270002299393,
+  "max_ms": 8.54310000067926,
+  "budget_ms": 30.0,
+  "projected_low_end_p95_ms": 18.566350011496965,
+  "low_end_slowdown_assumed": 5.0
+}
