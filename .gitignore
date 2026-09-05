@@ -22,7 +22,13 @@ venv/
 /android/.kotlin/
 /android/local.properties
 
-# Editors / OS
+# Editors / OS / agent tooling
 .DS_Store
 .idea/
 .vscode/
+
+# Claude Code local configuration: settings, agents, skills, session state.
+# Machine-specific and often carries local paths, so it does not belong in the
+# repo. Note this is the .claude/ DIRECTORY only -- CLAUDE.md at the repo root
+# is a deliberate, checked-in project document and stays tracked.
+.claude/
