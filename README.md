@@ -17,6 +17,7 @@ Every commercial GNSS-denied dead-reckoning system (Baidu VDR, Amap's tunnel mod
 - **[demo/](demo/)** — single-file WebGL presentation demo (`gnss-demo.html`) simulating the GNSS-blackout → dead-reckoning → re-acquisition cycle for live pitching.
 - **[python/](python/)** — data pipeline, estimator, evaluation harness, learned speed net. Start at [python/README.md](python/README.md).
 - **[android/](android/)** — the live app. The estimator is a pure-Kotlin module proved numerically identical to Python by a golden-vector parity suite. 2.2 MB release APK, minSdk 29.
+- **[submission/](submission/)** — the SIH 2026 idea deck built on the official six-slide template (PPTX and PDF), plus the scripts that regenerate every figure from `eval/results/`. Why it is laid out the way it is: [research/SIH-winning-decks-analysis.md](research/SIH-winning-decks-analysis.md).
 - **[shared/](shared/)** — the Python↔Android contract: model checkpoint, conformal factors, and the rules for using them.
 
 ## Status — 2026-09-05
