@@ -251,7 +251,7 @@ picture(s2, "fig_traj.png", 6.95, 1.2, width=6.05)
 caption(s2, 6.95, 5.78, 6.05,
         f"One of 183 sixty-second outages in the benchmark ({traj['sequence']}, "
         f"{traj['distance_m']:,.0f} m travelled, error {traj['err_ours_m']:,.0f} m). Median across "
-        f"all of them: 640 m for ShadowNav, 6.9 km for naive integration.", size=10.5)
+        f"all of them: 640 m for ShadowNav, 6.9 km for naive integration.", size=11)
 brand(s2)
 
 # --- slide 3: technical approach
@@ -337,7 +337,7 @@ picture(s5, "app_shot.png", 10.25, 1.15, height=3.1)
 caption(s5, 6.9, 4.3, 6.1,
         "Left: the filter's own 90 % circle covered 17 % of true positions on held-out routes; conformal "
         "inflation brings it to 97 %, reported as empirically calibrated, never guaranteed. "
-        "Right: the live app on a moto g64 5G, 401 Hz IMU, 48 satellites visible.", size=10.5)
+        "Right: the live app on a moto g64 5G, 401 Hz IMU, 48 satellites visible.", size=11)
 tile(s5, 6.9, 5.35, 6.1, 1.5, "Numbers that matter", [
     "2.2 MB APK, Android 10+, 0 extra hardware, 0 cloud calls",
     "1.7× to 43× lower blackout error than naive integration on 991 real-drive outages",
@@ -392,7 +392,7 @@ for r, row in enumerate(rows):
         cell.fill.fore_color.rgb = NAVY if r == 0 else (TILE_GREEN if c == 4 else (WHITE if r % 2 else TILE_BLUE))
 caption(s6, 7.15, 5.6, 5.9,
         "Comparison from the project research dossier (§10 live SIH26168 repos, §13 market landscape); "
-        "re-verify each cell before the finale.", size=10)
+        "re-verify each cell before the finale.", size=11)
 brand(s6)
 
 prs.save(str(OUT))
