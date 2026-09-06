@@ -331,7 +331,7 @@ ben = [
     ("Strategic", ["No foreign vendor SDK", "Reproducible, auditable results"], TILE_VIOLET, RGBColor(0x5B, 0x5B, 0xD6)),
 ]
 for k, (t, lines, f, e) in enumerate(ben):
-    tile(s5, 0.35 + k * 1.6, 5.1, 1.5, 1.75, t, lines, f, e, body=10.5, head=12)
+    tile(s5, 0.35 + k * 1.6, 5.1, 1.5, 1.75, t, lines, f, e, body=11, head=12)
 picture(s5, "fig_coverage.png", 6.9, 1.15, width=3.1)
 picture(s5, "app_shot.png", 10.25, 1.15, height=3.1)
 caption(s5, 6.9, 4.3, 6.1,
