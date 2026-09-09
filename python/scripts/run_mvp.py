@@ -107,6 +107,13 @@ def main(argv: list[str] | None = None) -> int:
                     help="ablation: integrate forward accel instead of holding speed")
     ap.add_argument("--speednet", action="store_true",
                     help="use the trained CNN+GRU forward-speed front end")
+    ap.add_argument("--speednet-checkpoint", type=Path, default=None,
+                    help="override the checkpoint path (default: shared/speednet.pt); "
+                         "for evaluating experimental checkpoints, e.g. an ensemble, "
+                         "without touching the committed default")
+    ap.add_argument("--speednet-gate", type=float, default=None,
+                    help="hard confidence gate: skip the speed update entirely "
+                         "when the network's sigma exceeds this (m/s)")
     ap.add_argument("--no-ackermann", action="store_true",
                     help="ablation: disable the Ackermann curvature/friction bounds")
     ap.add_argument("--out", type=Path, default=None)
@@ -118,6 +125,7 @@ def main(argv: list[str] | None = None) -> int:
         use_centripetal=args.cent,
         use_accel_speed=args.accel_speed,
         use_ackermann=not args.no_ackermann,
+        speednet_sigma_gate=args.speednet_gate,
     )
     method = "kinematic"
     if args.cent:
@@ -126,12 +134,14 @@ def main(argv: list[str] | None = None) -> int:
         method += "_accel"
     if args.no_ackermann:
         method += "_no_ack"
+    if args.speednet_gate is not None:
+        method += f"_gate{args.speednet_gate:g}"
 
     speed_estimator = None
     if args.speednet:
         from shadownav.models.inference import SpeedNetEstimator
 
-        speed_estimator = SpeedNetEstimator()
+        speed_estimator = SpeedNetEstimator(checkpoint=args.speednet_checkpoint)
         method += "_speednet"
         print(f"speed front end: {speed_estimator.variant} variant, "
               f"window {speed_estimator.window}")

@@ -306,3 +306,73 @@ unconditional learned correction that helps at some horizons and hurts at
 others is precisely the failure Agastya's ablation documents. The indicated fix
 is a confidence *gate* on the correction, not more model — and that must be
 built and validated without touching the test fold.
+
+### Full test-fold confirmation, and three follow-up experiments (2026-09-09)
+
+The 8-sequence table above is 24–36 outages per horizon. Running the same
+control-vs-speednet comparison over the **whole test fold** (15 sequences, 281
+outages, n=46–66 per horizon) reproduces the same qualitative pattern at a
+larger sample, and it turns out to be *stronger* — speednet now helps at every
+horizon except 180 s, not just the middle ones:
+
+| horizon | control | + speed net | change |
+|---|---|---|---|
+| 10 s | 167.8 m | **139.2 m** | −17.0% |
+| 30 s | 331.3 m | **286.3 m** | −13.6% |
+| 60 s | 493.0 m | **476.2 m** | −3.4% |
+| 120 s | 736.2 m | **687.4 m** | −6.6% |
+| 180 s | 775.0 m | 907.7 m | **+17.1%** |
+
+Same conclusion, more evidence: the 180 s bias is real and consistent, not an
+8-sequence sampling artifact.
+
+Three things were tried against it this session, in order of how tractable
+they turned out to be:
+
+**1. Seed ensembling — tried, did not help, and sharpened the diagnosis.**
+`scripts/train_speednet_ensemble.py` trains 5 independently-seeded "full"
+models and combines them by Gaussian-mixture moment matching (implemented in
+`SpeedNetEstimator` — a checkpoint's `state_dicts` list, plural, triggers the
+ensemble path; `state_dict`, singular, keeps loading a single model exactly as
+before). Result: **all 5 members landed with the same-signed bias** (+1.29,
++1.60, +1.40, +1.64, +1.49 m/s on test), so the ensemble mean (test RMSE
+2.117, bias +1.486) just reproduced the bias instead of cancelling it —
+ensembling only cancels *independent* per-model noise, and this bias is a
+systematic property of training in this environment, not random per-seed
+variance. Checkpoint at `shared/speednet_ensemble.pt`, not wired into the
+default path (`shared/speednet.pt` is unchanged).
+
+**2. A cross-environment reproducibility gap, found by accident.** Retraining
+`train_speednet.py` from scratch on this machine (same committed seed
+20260905, freshly-fetched real IO-VNBD data, all 161 tests passing) did *not*
+reproduce the committed 1.847 test RMSE — it picked a different winning
+variant (`no_bank`) at 1.994, and with more epochs (120 vs 60) actually got
+worse (2.014, below the trivial baseline). Root cause: `seed_everything`
+enables `torch.use_deterministic_algorithms(True, warn_only=True)` —
+warn-only, so the GRU / multi-head-attention path's nondeterministic CPU
+kernels fall back silently on a different PyTorch build instead of erroring.
+With ~14k labels and a val/test split with opposite-signed bias (the table
+above), a different numeric trajectory lands somewhere very different. The
+committed `shared/speednet.pt` was left untouched both times this was found.
+
+**3. A hard confidence gate — the most promising lead, not yet fully
+validated.** `KinematicPipelineConfig.speednet_sigma_gate` (default `None` =
+unchanged behaviour) skips the speed update entirely when the network's
+calibrated sigma exceeds the threshold, rather than just down-weighting it via
+`R` — because a systematic bias does not average out of a Kalman update the
+way variance does. Sweeping the threshold on the 8-sequence set: gate ≤ 1.0
+blocks nearly everything (reduces to the control, since calibrated sigma is
+usually >1.0 m/s); gate ≥ 2.0 blocks almost nothing (reduces to ungated);
+**gate = 1.5 sits in between and beats *both* the control and ungated speednet
+at 180 s (859.7 m vs 870.6 m vs 1033.8 m) and at 10 s (121.0 m), but is worse
+than both at 120 s (691.0 m vs 590.6 m / 536.7 m)** — a horizon-dependent
+pattern, not a clean win, and on a small sample (24–36 outages/horizon). A
+full-test-fold run of gate=1.5 was started to check whether this holds at
+n=46–66 but was stopped before finishing (see `git log` around this entry's
+commit for when) — **this is the open next step**, run via:
+
+```
+PYTHONPATH=. python scripts/run_mvp.py --fold test --speednet --speednet-gate 1.5
+```
+
+before drawing any conclusion about adopting it.

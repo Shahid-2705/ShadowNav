@@ -25,7 +25,15 @@ DEFAULT_MODEL = Path(__file__).resolve().parents[3] / "shared" / "speednet.pt"
 
 
 class SpeedNetEstimator:
-    """Trained forward-speed front end, ready to hand to the pipeline."""
+    """Trained forward-speed front end, ready to hand to the pipeline.
+
+    Loads either a single-model checkpoint (``state_dict``) or a seed-ensemble
+    checkpoint (``state_dicts``, a list -- see ``scripts/train_speednet_ensemble.py``).
+    An ensemble's members are averaged with Gaussian-mixture moment matching
+    (mean of means; variance = mean of variances + variance of means), which is
+    what makes disagreement between members show up as *higher* reported sigma
+    rather than silently cancelling out.
+    """
 
     def __init__(
         self,
@@ -45,9 +53,19 @@ class SpeedNetEstimator:
         # checkpoint you did not produce yourself.
         blob = torch.load(path, map_location="cpu", weights_only=True)
         self.config = SpeedNetConfig(**blob["config"])
-        self.model = SpeedNet(self.config)
-        self.model.load_state_dict(blob["state_dict"])
-        self.model.eval()
+        if "state_dicts" in blob:
+            self.models = []
+            for sd in blob["state_dicts"]:
+                m = SpeedNet(self.config)
+                m.load_state_dict(sd)
+                m.eval()
+                self.models.append(m)
+            self.model = self.models[0]
+        else:
+            self.model = SpeedNet(self.config)
+            self.model.load_state_dict(blob["state_dict"])
+            self.model.eval()
+            self.models = [self.model]
 
         self.mean = np.asarray(blob["feature_mean"].numpy(), dtype=float)
         self.std = np.asarray(blob["feature_std"].numpy(), dtype=float)
@@ -76,8 +94,22 @@ class SpeedNetEstimator:
 
         feat = (invariant_features(acc, gyr, up) - self.mean) / self.std
         x = torch.tensor(feat, dtype=torch.float32).unsqueeze(0)
-        speed, log_var = self.model(x)
-        sigma = float(torch.exp(0.5 * log_var).item()) * self.sigma_scale
+
+        if len(self.models) == 1:
+            speed, log_var = self.model(x)
+            var = torch.exp(log_var)
+        else:
+            mus, log_vars = [], []
+            for m in self.models:
+                mu, lv = m(x)
+                mus.append(mu)
+                log_vars.append(lv)
+            mu_stack = torch.stack(mus, dim=0)
+            var_stack = torch.exp(torch.stack(log_vars, dim=0))
+            speed = mu_stack.mean(dim=0)
+            var = var_stack.mean(dim=0) + ((mu_stack - speed) ** 2).mean(dim=0)
+
+        sigma = float(torch.sqrt(var).item()) * self.sigma_scale
         return (
             float(speed.item()),
             float(np.clip(sigma, self.sigma_floor, self.sigma_ceiling)),

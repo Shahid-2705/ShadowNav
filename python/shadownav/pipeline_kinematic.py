@@ -84,6 +84,20 @@ class KinematicPipelineConfig:
     #: read only the gyroscope's vertical component, which is available
     #: without a full device-to-car alignment, so they are on by default.
     use_ackermann: bool = True
+    #: Hard confidence gate on the learned speed front end, in m/s of the
+    #: network's own reported sigma. ``None`` (default) preserves the existing
+    #: behaviour: every finite prediction is fed to the filter with sigma as
+    #: its measurement noise, which only *down-weights* an unconfident
+    #: prediction rather than excluding it. That is not enough when the error
+    #: is a systematic bias rather than variance -- shared/README.md documents
+    #: a +1.08 m/s test-fold bias that inflating R cannot remove, since bias
+    #: does not average away, it accumulates every time the measurement is
+    #: applied. Setting this skips the update entirely when sigma exceeds the
+    #: threshold, so a confidently-wrong-anyway prediction still gets in, but
+    #: the tail of least-confident predictions -- plausibly correlated with
+    #: where the bias is worst -- never reaches the filter at all. Untested
+    #: prior to this ablation; see eval/results/kinematic_speednet_gated*.json.
+    speednet_sigma_gate: float | None = None
 
 
 @dataclass(frozen=True)
@@ -222,7 +236,8 @@ def run(
                 and row % max(1, cfg.speed_stride) == 0):
             lo = row - cfg.speed_window + 1
             s_hat, sigma = speed_estimator(acc[lo : row + 1], gyr[lo : row + 1])
-            if np.isfinite(s_hat):
+            gate = cfg.speednet_sigma_gate
+            if np.isfinite(s_hat) and (gate is None or sigma <= gate):
                 ekf.update_speed(float(s_hat), float(sigma))
 
         obs = GnssObservation(
