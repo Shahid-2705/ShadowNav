@@ -19,6 +19,7 @@ import numpy as np
 import torch
 
 from .features import gravity_direction, invariant_features
+from .gate import GateConfig, GatedSpeed
 from .speednet import SpeedNet, SpeedNetConfig
 
 DEFAULT_MODEL = Path(__file__).resolve().parents[3] / "shared" / "speednet.pt"
@@ -114,3 +115,52 @@ class SpeedNetEstimator:
             float(speed.item()),
             float(np.clip(sigma, self.sigma_floor, self.sigma_ceiling)),
         )
+
+
+class GatedSpeedNetEstimator:
+    """``SpeedNetEstimator`` behind the confidence gate in ``models/gate.py``.
+
+    The wrapped network is unchanged: same checkpoint, same features, same
+    val-fitted ``sigma_scale`` (the gate's thresholds are in calibrated m/s,
+    so the scale must be applied before the gate sees a sigma, and it is).
+    ``set_gravity`` is called once per drive by the evaluation harness and is
+    the only per-run hook the pipeline offers, so it also resets the gate's
+    prior: a new drive must not inherit the previous one's speed.
+    """
+
+    def __init__(
+        self,
+        checkpoint: Path | str | None = None,
+        *,
+        gate: GateConfig | None = None,
+        gravity: np.ndarray | None = None,
+    ) -> None:
+        self.net = SpeedNetEstimator(checkpoint, gravity=gravity)
+        self.gate = GatedSpeed(self.net, gate)
+
+    @property
+    def window(self) -> int:
+        return self.net.window
+
+    @property
+    def variant(self) -> str:
+        return self.net.variant
+
+    @property
+    def sigma_scale(self) -> float:
+        return self.net.sigma_scale
+
+    @property
+    def config(self) -> GateConfig:
+        return self.gate.config
+
+    def set_gravity(self, acc_history: np.ndarray) -> None:
+        self.net.set_gravity(acc_history)
+        self.gate.reset()
+
+    def diagnostics(self) -> dict[str, int]:
+        """Accept / reject / shrink counts over every run so far, this one included."""
+        return self.gate.totals.merged(self.gate.counts).as_dict()
+
+    def __call__(self, window_acc: np.ndarray, window_gyr: np.ndarray) -> tuple[float, float]:
+        return self.gate(window_acc, window_gyr)

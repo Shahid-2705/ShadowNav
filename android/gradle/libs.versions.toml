@@ -18,6 +18,14 @@ filament = "1.75.1"
 # anti-vendor-gate positioning as the Filament-over-SceneView choice in
 # Step 1 (PLAN.md §1's own pitch against Baidu's SDK-gated VDR).
 maplibre = "13.6.0"
+# ONNX Runtime for the on-device speed net (shared/speednet.onnx, opset 17).
+# Confirmed live on Maven Central 2026-09-10 (maven-metadata.xml lists 1.29.0
+# as the newest release). Chosen over TFLite because the trained model is
+# PyTorch and `torch.onnx.export` reproduces it to 2e-6 (scripts/export_onnx.py),
+# and over NNAPI because NNAPI is deprecated from Android 15; the default
+# CPU provider on this package is XNNPACK-backed. Loaded behind
+# SpeedNetOnnx.USE_SPEED_NET = false until a device number exists.
+onnxruntime = "1.29.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -39,6 +47,7 @@ filament-android = { group = "com.google.android.filament", name = "filament-and
 # project's OrbMaterial.kt is based on.
 filamat-android = { group = "com.google.android.filament", name = "filamat-android", version.ref = "filament" }
 maplibre-android-sdk = { group = "org.maplibre.gl", name = "android-sdk", version.ref = "maplibre" }
+onnxruntime-android = { group = "com.microsoft.onnxruntime", name = "onnxruntime-android", version.ref = "onnxruntime" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

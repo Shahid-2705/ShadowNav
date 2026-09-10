@@ -1,0 +1,22 @@
+{
+  "note": "desktop JVM proxy, not on-device",
+  "components": ["KinematicEkf", "GnssFsm", "StationaryDetector"],
+  "stream": "synthetic 401 Hz IMU, GNSS position/speed/course every 1 s, 15 s blackout",
+  "rate_hz": 401.000000,
+  "warmup_s": 5.000000,
+  "simulated_s": 60.000000,
+  "samples": 24060,
+  "elapsed_s": 0.118270,
+  "samples_per_second": 203432.307181,
+  "us_per_sample": 4.915640,
+  "realtime_ratio": 507.312487,
+  "budget_us_per_sample": 2493.765586,
+  "jvm": "OpenJDK 64-Bit Server VM 21.0.10",
+  "jvm_vendor": "JetBrains s.r.o.",
+  "os": "Windows 11 10.0",
+  "cpu": "AMD64 Family 23 Model 160 Stepping 0, AuthenticAMD",
+  "cpu_arch": "amd64",
+  "available_processors": 8,
+  "threads": 1,
+  "seed": 20260905
+}

@@ -52,6 +52,47 @@ class OutageResult:
     n_fixes_suppressed: int
     truth_gap_m: float
     nees: float | None = None
+    # Transition metrics (see :func:`transition_metrics`); None for methods
+    # that have no mode machine, e.g. the comparators.
+    detection_latency_s: float | None = None
+    reacq_snap_m: float | None = None
+    reacq_max_step_m: float | None = None
+    reacq_settle_s: float | None = None
+    reacq_residual_m: float | None = None
+    # The 90% ring the app would draw at the evaluation instant, in metres,
+    # from the raw filter covariance and after conformal inflation.
+    radius90_raw_m: float | None = None
+    radius90_cal_m: float | None = None
+
+    def as_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class TransitionMetrics:
+    """What the PS grades as "seamless": entering and leaving dead reckoning.
+
+    detection_latency_s  mask start -> first sample in DEAD_RECKONING
+    reacq_snap_m         displacement between the estimate and truth at the
+                         first real fix after the mask -- the error a naive
+                         re-anchor would jump by
+    reacq_max_step_m     the largest single-sample movement of the displayed
+                         position, in excess of the vehicle's own motion,
+                         within ``window_s`` of that fix. A snap shows up here
+                         as a step of about ``reacq_snap_m``; a blend shows up
+                         as a small number
+    reacq_settle_s       time from that fix until the mode machine is back in
+                         an aided state
+    reacq_residual_m     error against truth at the next real fix after the
+                         one that ended the outage -- whether the display has
+                         actually converged onto the fix track
+    """
+
+    detection_latency_s: float
+    reacq_snap_m: float
+    reacq_max_step_m: float
+    reacq_settle_s: float
+    reacq_residual_m: float
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -101,6 +142,15 @@ def truth_fix_rows(seq_df, start_row: int, end_row: int) -> np.ndarray:
     return rows[(rows >= start_row) & (rows <= end_row)]
 
 
+def evaluation_row(
+    time_s: np.ndarray, fix_rows: np.ndarray, start_row: int, horizon_s: float
+) -> int | None:
+    """The first real fix at or after ``start_row + horizon_s``, or None."""
+    target_t = time_s[start_row] + horizon_s
+    later = fix_rows[time_s[fix_rows] >= target_t]
+    return int(later[0]) if later.size else None
+
+
 def evaluate_window(
     *,
     sequence: str,
@@ -123,11 +173,9 @@ def evaluate_window(
     genuine outcome given the 9 s fix period rather than an error: it means the
     dataset simply cannot answer the question at that horizon on that sequence.
     """
-    target_t = time_s[start_row] + horizon_s
-    later = fix_rows[time_s[fix_rows] >= target_t]
-    if later.size == 0:
+    eval_row = evaluation_row(time_s, fix_rows, start_row, horizon_s)
+    if eval_row is None:
         return None
-    eval_row = int(later[0])
 
     err = resultant_error(est_e, est_n, true_e, true_n)
     crse = float(err[eval_row])
@@ -186,6 +234,90 @@ def evaluate_window(
     )
 
 
+#: The PS's own target: "dead reckoning drift restricted to less than 10% of
+#: the total distance travelled".
+PS_DRIFT_TARGET_PCT = 10.0
+
+AIDED_MODES = ("GNSS_AIDED", "DEGRADED")
+
+
+def transition_metrics(
+    *,
+    time_s: np.ndarray,
+    mode: np.ndarray,
+    est_e: np.ndarray,
+    est_n: np.ndarray,
+    speed_ms: np.ndarray,
+    true_e: np.ndarray,
+    true_n: np.ndarray,
+    fix_rows: np.ndarray,
+    start_row: int,
+    mask_end_row: int,
+    window_s: float = 30.0,
+) -> TransitionMetrics:
+    """Score the two transitions of one outage. See :class:`TransitionMetrics`.
+
+    All arrays are full-length (one entry per sequence row); ``mode`` holds the
+    :class:`GnssMode` values as strings. Rows outside the estimator's run are
+    NaN in ``est_*`` and are simply not scored.
+    """
+    nan = float("nan")
+    t = np.asarray(time_s, dtype=float)
+    modes = np.asarray(mode, dtype=object)
+
+    dr = np.flatnonzero(modes[start_row:] == "DEAD_RECKONING")
+    latency = float(t[start_row + dr[0]] - t[start_row]) if dr.size else nan
+
+    after = fix_rows[fix_rows >= mask_end_row]
+    if after.size == 0:
+        return TransitionMetrics(latency, nan, nan, nan, nan)
+    k0 = int(after[0])
+    snap = float(np.hypot(est_e[k0] - true_e[k0], est_n[k0] - true_n[k0]))
+
+    k_end = int(np.searchsorted(t, t[k0] + window_s, side="right"))
+    k_end = min(k_end, len(t))
+    excess = nan
+    if k_end > k0 + 1:
+        de = np.diff(est_e[k0:k_end])
+        dn = np.diff(est_n[k0:k_end])
+        dt = np.diff(t[k0:k_end])
+        own = np.asarray(speed_ms, dtype=float)[k0 + 1 : k_end] * dt
+        steps = np.hypot(de, dn) - own
+        steps = steps[np.isfinite(steps)]
+        if steps.size:
+            excess = float(max(0.0, np.max(steps)))
+
+    # Settling only means something if dead reckoning was entered at all.
+    back = np.flatnonzero(np.isin(modes[k0 + 1 : k_end], AIDED_MODES))
+    settle = float(t[k0 + 1 + back[0]] - t[k0]) if (back.size and dr.size) else nan
+
+    residual = nan
+    if after.size >= 2:
+        k1 = int(after[1])
+        if k1 < len(est_e) and np.isfinite(est_e[k1]):
+            residual = float(np.hypot(est_e[k1] - true_e[k1], est_n[k1] - true_n[k1]))
+
+    return TransitionMetrics(latency, snap, excess, settle, residual)
+
+
+def calibrated_radius(cov_xy: np.ndarray, lam: float, level: float = 0.90) -> float:
+    """Radius of the circle the app draws, in metres.
+
+    The ellipse at ``level`` has semi-axes ``lam * r(level) * sqrt(eig)``; the
+    displayed ring is the circle circumscribing it, so the major axis is used.
+    ``lam`` is the conformal inflation factor (1.0 for the raw covariance).
+    """
+    # Rayleigh quantile, as in evaluation.conformal.chi2_radius.
+    nominal = float(np.sqrt(-2.0 * np.log(1.0 - level)))
+    eig = np.linalg.eigvalsh(np.asarray(cov_xy, dtype=float))
+    return float(lam * nominal * np.sqrt(max(float(eig[-1]), 0.0)))
+
+
+def _nanmedian(values: list[float | None]) -> float:
+    vals = [v for v in values if v is not None and np.isfinite(v)]
+    return float(np.median(vals)) if vals else float("nan")
+
+
 def summarise(results: list[OutageResult]) -> dict[float, dict[str, float]]:
     """Aggregate per horizon. Median is the headline; these are heavy-tailed."""
     out: dict[float, dict[str, float]] = {}
@@ -194,6 +326,7 @@ def summarise(results: list[OutageResult]) -> dict[float, dict[str, float]]:
         crse = np.array([r.crse_m for r in rs])
         cte = np.array([r.cte_m for r in rs])
         drift = np.array([r.drift_pct for r in rs])
+        finite_drift = drift[np.isfinite(drift)]
         out[horizon] = {
             "n": len(rs),
             "crse_median_m": float(np.median(crse)),
@@ -201,7 +334,18 @@ def summarise(results: list[OutageResult]) -> dict[float, dict[str, float]]:
             "crse_mean_m": float(np.mean(crse)),
             "cte_median_m": float(np.median(cte)),
             "drift_median_pct": float(np.median(drift)),
+            "share_under_10pct": (
+                float(np.mean(finite_drift < PS_DRIFT_TARGET_PCT))
+                if finite_drift.size else float("nan")
+            ),
             "t_eval_median_s": float(np.median([r.t_eval_s for r in rs])),
             "truth_gap_median_m": float(np.nanmedian([r.truth_gap_m for r in rs])),
+            "detection_latency_median_s": _nanmedian([r.detection_latency_s for r in rs]),
+            "reacq_snap_median_m": _nanmedian([r.reacq_snap_m for r in rs]),
+            "reacq_max_step_median_m": _nanmedian([r.reacq_max_step_m for r in rs]),
+            "reacq_settle_median_s": _nanmedian([r.reacq_settle_s for r in rs]),
+            "reacq_residual_median_m": _nanmedian([r.reacq_residual_m for r in rs]),
+            "radius90_raw_median_m": _nanmedian([r.radius90_raw_m for r in rs]),
+            "radius90_cal_median_m": _nanmedian([r.radius90_cal_m for r in rs]),
         }
     return out

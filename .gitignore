@@ -37,3 +37,7 @@ venv/
 # research dossiers before researching" rule -- is duplicated in README.md and
 # PLAN.md, which remain tracked.
 CLAUDE.md
+
+# SIH 2026 submission material (deck, build scripts, figures, photos). Kept
+# local at the maintainer's request; the files still exist on disk.
+/submission/

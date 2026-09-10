@@ -75,10 +75,14 @@ def collect(fold: str, split: splits.Split, cfg: pipeline.KinematicPipelineConfi
                         continue
                     eval_row = int(later[0])
 
+                    # Same protocol as run_mvp.py: GNSS is hidden through the
+                    # scoring instant, so the covariance being calibrated
+                    # belongs to an unaided estimate.
+                    scored = masking.extend_to_row(seq, w, eval_row)
                     warm = max(0, w.start_row - 300)
                     try:
                         traj = pipeline.run(
-                            masking.apply_mask(seq, w), config=cfg,
+                            masking.apply_mask(seq, scored), config=cfg,
                             start_row=warm, end_row=end_row,
                         )
                     except (ValueError, np.linalg.LinAlgError):

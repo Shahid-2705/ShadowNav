@@ -120,6 +120,14 @@ class NavigationEngine {
         val gateOverrides: Int,
     )
 
+    /** Re-acquisition displacement not yet absorbed; ~0 once the blend settles.
+     *
+     *  Keyed on the blend rather than on the mode: the state machine can leave
+     *  REACQUIRING while a residual is still outstanding, and dropping it at
+     *  that moment is exactly the jump the blend exists to remove. */
+    private fun blendResidual(axis: Int): Double =
+        if (fsm.blend.settled) 0.0 else fsm.blend.error[axis]
+
     fun snapshot(): Snapshot = synchronized(lock) {
         val f = ekf
         val cov = f?.positionCovariance()
@@ -130,8 +138,10 @@ class NavigationEngine {
         Snapshot(
             hasFix = f != null,
             mode = fsm.mode,
-            eastM = f?.east ?: 0.0,
-            northM = f?.north ?: 0.0,
+            // Displayed position = filter + the un-absorbed re-acquisition
+            // residual, so the dot slides onto the fix track with no step.
+            eastM = (f?.east ?: 0.0) + blendResidual(0),
+            northM = (f?.north ?: 0.0) + blendResidual(1),
             headingRad = f?.headingRad ?: 0.0,
             speedMs = f?.speedMs ?: 0.0,
             sigmaM = sigma,
@@ -255,7 +265,7 @@ class NavigationEngine {
             if (before == GnssMode.DEAD_RECKONING && mode != GnssMode.REACQUIRING) {
                 distanceSinceLossM = 0.0
             }
-            if (mode == GnssMode.REACQUIRING) fsm.blend.step(dt)
+            if (!fsm.blend.settled) fsm.blend.step(dt)
         }
     }
 
@@ -311,7 +321,16 @@ class NavigationEngine {
             }
 
             if (fsm.mode == GnssMode.DEAD_RECKONING) {
+                // Same form as python/shadownav/pipeline_kinematic.py: the
+                // filter is re-anchored on the fix and the displacement is
+                // handed to the blend as a residual that decays to zero; the
+                // displayed position is filter + residual (see snapshot()).
+                // Previously the residual was stepped but never displayed, so
+                // the correction arrived as a snap when the gate escape
+                // re-anchored -- the offline replay measured that snap at a
+                // median 285-1282 m before the fix.
                 fsm.beginReacquisition(f.east, f.north, en[0], en[1])
+                f.reanchor(en[0], en[1])
             }
 
             val accuracy = if (location.hasAccuracy()) {

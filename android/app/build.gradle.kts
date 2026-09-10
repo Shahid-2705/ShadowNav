@@ -66,6 +66,9 @@ android {
     androidResources {
         noCompress += "filamat"
         noCompress += "mbtiles"
+        // Protobuf graph read once at session creation; nothing gained by
+        // compressing it and ORT can map it directly.
+        noCompress += "onnx"
     }
 
 }
@@ -86,6 +89,10 @@ dependencies {
     implementation(libs.material)
     implementation(libs.filament.android)
     implementation(libs.maplibre.android.sdk)
+    // On-device inference for shared/speednet.onnx. Off at runtime until
+    // SpeedNetOnnx.USE_SPEED_NET is flipped; present so the dependency, the
+    // asset and the session-construction path are exercised by the build.
+    implementation(libs.onnxruntime.android)
     // filamat-android (the runtime shader-compiler toolchain, measured at
     // ~8.9 MB) is deliberately NOT a dependency of the shipped app -- it was
     // used once, temporarily, to generate assets/materials/orb.filamat (see

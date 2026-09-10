@@ -5,69 +5,69 @@
   "calibration": {
     "level": 0.9,
     "factors": {
-      "10.0": 21.789633226928117,
-      "30.0": 15.459120572858856,
-      "60.0": 17.083691929131827,
-      "120.0": 16.94853473317337,
-      "180.0": 14.69583726846793
+      "10.0": 13.136830206402093,
+      "30.0": 8.824818921971868,
+      "60.0": 11.556020486366808,
+      "120.0": 10.128867819594456,
+      "180.0": 12.486239684197198
     },
     "n_calibration": {
-      "10.0": 40,
-      "30.0": 31,
-      "60.0": 30,
-      "120.0": 23,
-      "180.0": 22
+      "10.0": 89,
+      "30.0": 67,
+      "60.0": 55,
+      "120.0": 40,
+      "180.0": 35
     },
     "fitted_on": "val"
   },
   "per_horizon": [
     {
       "horizon_s": 10.0,
-      "lambda": 21.789633226928117,
-      "nees_median": 152.8009063471792,
-      "coverage_raw": 0.021739130434782608,
+      "lambda": 13.136830206402093,
+      "nees_median": 149.61687650597585,
+      "coverage_raw": 0.015151515151515152,
       "coverage_calibrated": 1.0,
-      "n_test": 46,
-      "n_fit": 40
+      "n_test": 66,
+      "n_fit": 89
     },
     {
       "horizon_s": 30.0,
-      "lambda": 15.459120572858856,
-      "nees_median": 130.39858466783605,
-      "coverage_raw": 0.11363636363636363,
-      "coverage_calibrated": 0.9090909090909091,
-      "n_test": 44,
-      "n_fit": 31
+      "lambda": 8.824818921971868,
+      "nees_median": 118.78132610392323,
+      "coverage_raw": 0.06349206349206349,
+      "coverage_calibrated": 0.8253968253968254,
+      "n_test": 63,
+      "n_fit": 67
     },
     {
       "horizon_s": 60.0,
-      "lambda": 17.083691929131827,
-      "nees_median": 62.64480788464978,
-      "coverage_raw": 0.15,
-      "coverage_calibrated": 0.95,
-      "n_test": 40,
-      "n_fit": 30
+      "lambda": 11.556020486366808,
+      "nees_median": 51.08177740020983,
+      "coverage_raw": 0.12280701754385964,
+      "coverage_calibrated": 1.0,
+      "n_test": 57,
+      "n_fit": 55
     },
     {
       "horizon_s": 120.0,
-      "lambda": 16.94853473317337,
-      "nees_median": 25.664353965407642,
-      "coverage_raw": 0.2222222222222222,
-      "coverage_calibrated": 1.0,
-      "n_test": 36,
-      "n_fit": 23
+      "lambda": 10.128867819594456,
+      "nees_median": 22.306674684201873,
+      "coverage_raw": 0.1836734693877551,
+      "coverage_calibrated": 0.9795918367346939,
+      "n_test": 49,
+      "n_fit": 40
     },
     {
       "horizon_s": 180.0,
-      "lambda": 14.69583726846793,
-      "nees_median": 18.53057326755404,
-      "coverage_raw": 0.35294117647058826,
+      "lambda": 12.486239684197198,
+      "nees_median": 13.619601853647708,
+      "coverage_raw": 0.32608695652173914,
       "coverage_calibrated": 1.0,
-      "n_test": 34,
-      "n_fit": 22
+      "n_test": 46,
+      "n_fit": 35
     }
   ],
-  "mean_coverage_raw": 0.17210777855279136,
-  "mean_coverage_calibrated": 0.9718181818181819,
+  "mean_coverage_raw": 0.1422422044193865,
+  "mean_coverage_calibrated": 0.9609977324263038,
   "claim": "empirically calibrated coverage on held-out routes; not a guarantee -- trajectory errors are not exchangeable"
 }

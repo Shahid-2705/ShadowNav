@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Callable, Protocol
 
 import numpy as np
 
@@ -148,7 +148,17 @@ def run(
     speed_estimator: SpeedEstimator | None = None,
     start_row: int = 0,
     end_row: int | None = None,
+    heading_observer: Callable[[int, float, float, float], tuple[float, float] | None] | None = None,
 ) -> Trajectory:
+    """Run the estimator over ``[start_row, end_row]``.
+
+    ``heading_observer`` is the heading-only map constraint hook
+    (``shadownav.map``): called every sample with ``(row, east, north,
+    heading_rad)`` from the filter state, it returns ``(road_bearing_rad,
+    sigma_rad)`` when its gates pass and None otherwise. The observation
+    enters through ``update_course`` -- heading only, never position. With
+    the default None the run is byte-identical to a run without the hook.
+    """
     cfg = config or KinematicPipelineConfig()
     end_row = (len(seq) - 1) if end_row is None else min(end_row, len(seq) - 1)
     n = end_row - start_row + 1
@@ -217,6 +227,7 @@ def run(
     out_mode = np.empty(n, dtype=object)
     out_cov = np.zeros((n, 2, 2))
     prev_mode = fsm.mode
+    reacq_pending = False
 
     for i in range(n):
         row = start_row + i
@@ -248,14 +259,30 @@ def run(
         )
         mode = fsm.update(float(t[row]), obs, dt)
 
-        if prev_mode is GnssMode.DEAD_RECKONING and mode is GnssMode.REACQUIRING \
-                and obs.available:
-            fsm.begin_reacquisition(ekf.position,
-                                    np.array([true_e[row], true_n[row]]))
+        # Re-acquisition is armed by the mode transition but *executed* on the
+        # next real fix. Two reasons. The dataset repeats the last GPS value
+        # for a median of 9 s, so a transition-triggered re-anchor would latch
+        # a stale position that can be tens of metres from the vehicle. And in
+        # the app a fix is the only thing that ever arrives -- anchoring on
+        # anything else has no counterpart on the device.
+        if prev_mode is GnssMode.DEAD_RECKONING and mode is GnssMode.REACQUIRING:
+            reacq_pending = True
 
-        if mode in (GnssMode.AIDED, GnssMode.DEGRADED) and obs.available and is_new_fix[row]:
+        if mode in (GnssMode.AIDED, GnssMode.DEGRADED, GnssMode.REACQUIRING) \
+                and obs.available and is_new_fix[row]:
+            fix = np.array([true_e[row], true_n[row]])
+            if reacq_pending:
+                # The filter jumps to the fix; the *display* carries the
+                # displacement as a residual that decays to zero, so the dot
+                # slides on rather than teleporting. The previous form
+                # subtracted only each step's decrement from an un-anchored
+                # filter, so the display never absorbed anything and the
+                # correction arrived as a snap once the gate escape fired.
+                fsm.begin_reacquisition(ekf.position, fix)
+                ekf.reanchor(fix)
+                reacq_pending = False
             accepted = ekf.update_position(
-                np.array([true_e[row], true_n[row]]),
+                fix,
                 sigma=obs.accuracy_m if np.isfinite(obs.accuracy_m) else None,
                 cn0_mean=obs.cn0_mean,
             )
@@ -266,9 +293,18 @@ def run(
             if accepted:
                 fsm.note_good_fix(float(t[row]), ekf.position)
 
+        if heading_observer is not None:
+            hint_pos = ekf.position
+            hint = heading_observer(row, float(hint_pos[0]), float(hint_pos[1]), ekf.heading_rad)
+            if hint is not None:
+                ekf.update_course(float(hint[0]), float(hint[1]))
+
         pos = ekf.position
-        if mode is GnssMode.REACQUIRING:
-            pos = pos - (fsm.blend.error - fsm.blend.step(dt))
+        # Keyed on the blend, not on the mode: the machine can leave
+        # REACQUIRING while a residual is still outstanding, and dropping the
+        # residual at that moment is exactly the jump this is here to remove.
+        if not fsm.blend.settled:
+            pos = pos + fsm.blend.step(dt)
 
         out_e[i] = pos[0]
         out_n[i] = pos[1]

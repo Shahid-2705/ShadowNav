@@ -130,6 +130,37 @@ def plan_outages(
     return sorted(candidates, key=lambda w: w.start_s)
 
 
+def extend_to_row(seq: Sequence, window: OutageWindow, end_row: int) -> OutageWindow:
+    """Return the window stretched so the mask covers ``end_row`` inclusive.
+
+    Why this exists. Metrics are scored at the first *real* GPS fix at or after
+    the horizon, because that is the earliest instant ground truth exists. With
+    the mask ending exactly at the horizon, that fix is also the first fix the
+    estimator is allowed to see -- so the estimator would be corrected by the
+    very observation used to score it, in the same sample, before its position
+    is recorded. The chi-square gate hid most of that (a large innovation is
+    rejected), but "the metric is safe because the gate usually fires" is not a
+    protocol. Stretching the outage to the scoring instant makes the estimate
+    at that instant unconditionally unaided.
+
+    The cost is that the scored outage is longer than the requested horizon by
+    up to one fix period. That was already true of the reported metric --
+    ``t_eval_s`` records it -- and it is now true of the estimator's experience
+    as well, which is the consistent choice.
+    """
+    end = max(window.end_row, int(end_row) + 1)
+    is_new = seq.df["gps_fix_is_new"].to_numpy()
+    return OutageWindow(
+        sequence=window.sequence,
+        start_s=window.start_s,
+        duration_s=window.duration_s,
+        start_row=window.start_row,
+        end_row=end,
+        n_fixes_suppressed=int(is_new[window.start_row : end].sum()),
+        distance_m=_distance_between_rows(seq, window.start_row, end),
+    )
+
+
 def apply_mask(seq: Sequence, window: OutageWindow) -> Sequence:
     """Return a new Sequence with GNSS suppressed inside the window.
 

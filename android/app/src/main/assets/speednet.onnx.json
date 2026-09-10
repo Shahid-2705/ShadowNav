@@ -1,0 +1,44 @@
+{
+  "source": "shared\\speednet.pt",
+  "onnx": "shared\\speednet.onnx",
+  "opset": 17,
+  "input": {
+    "name": "features",
+    "shape": [
+      1,
+      64,
+      6
+    ],
+    "dtype": "float32"
+  },
+  "outputs": [
+    "speed",
+    "log_var"
+  ],
+  "size_bytes": 528560,
+  "sigma_scale": 3.2702841758728027,
+  "feature_mean": [
+    10.31913579763851,
+    9.83002938679369,
+    2.572584751650053,
+    0.3049143630528688,
+    -0.0030453400105910303,
+    0.2556968797880743
+  ],
+  "feature_std": [
+    1.0683154833966424,
+    0.8113136129188407,
+    1.9287202373630115,
+    0.254798037892473,
+    0.20850601366945562,
+    0.22142692416307272
+  ],
+  "verification": {
+    "status": "pass",
+    "max_abs_diff_speed": 1.9073486328125e-06,
+    "max_abs_diff_log_var": 3.5762786865234375e-07,
+    "n_windows": 50,
+    "tolerance": 0.0001,
+    "onnxruntime": "1.24.2"
+  }
+}

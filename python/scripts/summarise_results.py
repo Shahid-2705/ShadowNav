@@ -12,14 +12,23 @@ import json
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from shadownav.evaluation import compare  # noqa: E402
+
 RESULTS = Path(__file__).resolve().parents[2] / "eval" / "results"
 
 #: file stem -> (label, whether it is an ablation rather than a headline config)
 KNOWN = {
     "baseline_naive": ("naive strapdown (floor)", False),
+    "baseline_freeze": ("freeze last fix", False),
+    "baseline_cv": ("constant velocity (no IMU)", False),
+    "baseline_gyro": ("speed hold + gyro heading", False),
     "kinematic": ("kinematic MVP", False),
     "kinematic_ctrl8": ("kinematic (8-seq control)", False),
     "kinematic_speednet": ("kinematic + speed net (8-seq)", False),
+    "kinematic_maphead": ("  map heading constraint: ON", True),
+    "kinematic_maphead_off": ("  map heading constraint: OFF", True),
     "kinematic_no_ack": ("  ablation: no Ackermann", True),
     "kinematic_cent": ("  ablation: + L_cent", True),
     "kinematic_accel": ("  ablation: + accel speed", True),
@@ -31,6 +40,69 @@ KNOWN = {
 }
 
 HORIZONS = ["10.0", "30.0", "60.0", "120.0", "180.0"]
+
+#: Comparators a judge will ask about, paired per outage against the MVP.
+COMPARATORS = ("baseline_freeze", "baseline_cv", "baseline_gyro", "baseline_naive")
+
+
+def _find(rows, stem_label: str):
+    return next((r for r in rows if r[0] == KNOWN[stem_label][0]), None)
+
+
+def print_fair_comparison(rows) -> None:
+    """The PS's 10% target, and paired wins against each comparator."""
+    print(f"\nshare of outages under the PS target ({compare.PS_DRIFT_TARGET_PCT:.0f}% of "
+          f"distance travelled)\n")
+    for label, is_ab, blob, _ in rows:
+        if is_ab or "results" not in blob:
+            continue
+        share = compare.share_under_drift(blob["results"], compare.PS_DRIFT_TARGET_PCT)
+        cells = "  ".join(f"{h:.0f}s={100 * v:.1f}%" for h, v in share.items())
+        print(f"  {label:<34}{cells}")
+
+    mvp = _find(rows, "kinematic")
+    if mvp is None or "results" not in mvp[2]:
+        return
+    ours = mvp[2]["results"]
+    print("\nkinematic MVP vs each comparator, paired on the identical outage\n"
+          "  (share of outages the MVP wins; median comparator/MVP error ratio)\n")
+    for stem in COMPARATORS:
+        row = _find(rows, stem)
+        if row is None or "results" not in row[2]:
+            continue
+        theirs = row[2]["results"]
+        wins = compare.share_beating(ours, theirs)
+        ratio = compare.paired_median_ratio(ours, theirs)
+        n = compare.paired_count(ours, theirs)
+        cells = "  ".join(
+            f"{h:.0f}s={100 * wins[h]:.0f}% ({ratio[h]:.2f}x, n={n[h]})" for h in wins
+        )
+        print(f"  vs {row[0]:<31}{cells}")
+
+
+def print_transitions(rows) -> None:
+    """What the PS grades as seamless, plus the ring the app would draw."""
+    mvp = _find(rows, "kinematic")
+    if mvp is None:
+        return
+    summary = mvp[3]
+    if "reacq_snap_median_m" not in summary.get(HORIZONS[0], {}):
+        print("\n(kinematic.json predates the transition metrics; re-run run_mvp.py)")
+        return
+    print("\nkinematic MVP transitions and the 90% ring (medians)\n")
+    print(f"{'horizon':>8} {'detect s':>9} {'snap m':>8} {'max step m':>11} "
+          f"{'settle s':>9} {'resid m':>8} {'ring raw m':>11} {'ring cal m':>11}")
+    for h in HORIZONS:
+        s = summary.get(h)
+        if not s:
+            continue
+        print(f"{float(h):>8.0f} {s['detection_latency_median_s']:>9.2f} "
+              f"{s['reacq_snap_median_m']:>8.1f} {s['reacq_max_step_median_m']:>11.1f} "
+              f"{s['reacq_settle_median_s']:>9.2f} {s['reacq_residual_median_m']:>8.1f} "
+              f"{s['radius90_raw_median_m']:>11.1f} {s['radius90_cal_median_m']:>11.1f}")
+    print("  snap = error a naive re-anchor would jump by; max step = largest single-sample\n"
+          "  displayed movement beyond the vehicle's own motion within 30 s of the fix;\n"
+          "  resid = error at the next real fix after re-acquisition.")
 
 
 def main() -> int:
@@ -94,6 +166,9 @@ def main() -> int:
             for h in HORIZONS if h in summary
         )
         print(f"  {label:<34}{d}")
+
+    print_fair_comparison(rows)
+    print_transitions(rows)
 
     # Reference points, so a reader can place these numbers.
     print("\nreference points (PLAN.md section 5):")

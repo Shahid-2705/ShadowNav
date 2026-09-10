@@ -10,6 +10,7 @@ Run:  PYTHONPATH=. python scripts/run_mvp.py [--fold test] [--limit N]
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import sys
 from collections import defaultdict
@@ -25,6 +26,29 @@ from shadownav.data import fetch, iovnbd  # noqa: E402
 from shadownav.evaluation import masking, metrics, splits  # noqa: E402
 from shadownav.utils.seed import seed_everything  # noqa: E402
 
+ROOT = Path(__file__).resolve().parents[2]
+
+#: Rows run past the scoring window so the re-acquisition can be watched.
+#: The gate escape fires after three rejected fixes, i.e. up to ~27 s at the
+#: dataset's 9 s fix period, and a blend that only completes then must be
+#: caught rather than reported as "no jump".
+REACQ_TAIL_ROWS = 400
+
+
+def load_conformal_factors(path: Path = ROOT / "shared" / "conformal.json") -> dict[float, float]:
+    """Per-horizon inflation factors fitted on the val fold, if committed."""
+    if not path.exists():
+        return {}
+    blob = json.loads(path.read_text(encoding="utf-8"))
+    return {float(h): float(v) for h, v in blob.get("factors", {}).items()}
+
+
+def nearest_factor(factors: dict[float, float], horizon_s: float) -> float:
+    if not factors:
+        return 1.0
+    nearest = min(factors, key=lambda h: abs(h - horizon_s))
+    return factors[nearest]
+
 
 def evaluate_sequence(
     seq: iovnbd.Sequence,
@@ -33,7 +57,9 @@ def evaluate_sequence(
     method: str,
     aligned_any: list[bool] | None = None,
     speed_estimator=None,
+    factors: dict[float, float] | None = None,
 ) -> list[metrics.OutageResult]:
+    factors = factors if factors is not None else {}
     ref_lat, ref_lon = pipeline.enu_reference(seq)
     true_e, true_n = geo.lla_to_enu(
         seq.df["gps_lat_deg"].to_numpy(),
@@ -56,9 +82,20 @@ def evaluate_sequence(
             if end_row <= w.start_row + 2:
                 continue
 
+            # Find the scoring instant *before* running, and hide GNSS through
+            # it: the fix used to score the estimate must never be handed to
+            # the estimator (masking.extend_to_row explains why). The run then
+            # continues past it so the re-acquisition can be measured.
+            usable = fix_rows[(fix_rows >= w.start_row) & (fix_rows <= end_row)]
+            eval_row = metrics.evaluation_row(seq.time_s, usable, w.start_row, horizon)
+            if eval_row is None:
+                continue
+            scored = masking.extend_to_row(seq, w, eval_row)
+            run_end = min(len(seq) - 1, eval_row + REACQ_TAIL_ROWS)
+
             # Give the filter pre-outage context to settle its biases on.
             warm = max(0, w.start_row - 300)
-            masked = masking.apply_mask(seq, w)
+            masked = masking.apply_mask(seq, scored)
             if speed_estimator is not None:
                 # Fix the vertical once per drive from aided data. Re-estimating
                 # it per window reintroduces the short-window tilt error.
@@ -67,7 +104,7 @@ def evaluate_sequence(
                 )
             try:
                 traj = pipeline.run(
-                    masked, config=cfg, start_row=warm, end_row=end_row,
+                    masked, config=cfg, start_row=warm, end_row=run_end,
                     speed_estimator=speed_estimator,
                 )
             except (ValueError, np.linalg.LinAlgError):
@@ -77,23 +114,41 @@ def evaluate_sequence(
 
             est_e = np.full(len(seq), np.nan)
             est_n = np.full(len(seq), np.nan)
+            speed = np.full(len(seq), np.nan)
+            mode = np.full(len(seq), None, dtype=object)
             cov = np.zeros((len(seq), 2, 2))
-            sl = slice(warm, end_row + 1)
+            sl = slice(warm, run_end + 1)
             est_e[sl] = traj.east_m
             est_n[sl] = traj.north_m
+            speed[sl] = traj.speed_ms
+            mode[sl] = traj.mode
             cov[sl] = traj.cov_xy
 
-            usable = fix_rows[(fix_rows >= w.start_row) & (fix_rows <= end_row)]
             res = metrics.evaluate_window(
                 sequence=seq.name, method=method, horizon_s=horizon,
                 time_s=seq.time_s, est_e=est_e, est_n=est_n,
                 true_e=true_e, true_n=true_n,
                 fix_rows=usable, start_row=w.start_row,
-                distance_m=w.distance_m, n_fixes_suppressed=w.n_fixes_suppressed,
+                distance_m=scored.distance_m,
+                n_fixes_suppressed=scored.n_fixes_suppressed,
                 cov_xy=cov,
             )
-            if res is not None and np.isfinite(res.crse_m):
-                out.append(res)
+            if res is None or not np.isfinite(res.crse_m):
+                continue
+
+            transitions = metrics.transition_metrics(
+                time_s=seq.time_s, mode=mode, est_e=est_e, est_n=est_n,
+                speed_ms=speed, true_e=true_e, true_n=true_n,
+                fix_rows=fix_rows, start_row=w.start_row,
+                mask_end_row=scored.end_row,
+            )
+            lam = nearest_factor(factors, horizon)
+            out.append(dataclasses.replace(
+                res,
+                **transitions.as_dict(),
+                radius90_raw_m=metrics.calibrated_radius(cov[eval_row], 1.0),
+                radius90_cal_m=metrics.calibrated_radius(cov[eval_row], lam),
+            ))
     return out
 
 
@@ -114,10 +169,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--speednet-gate", type=float, default=None,
                     help="hard confidence gate: skip the speed update entirely "
                          "when the network's sigma exceeds this (m/s)")
+    ap.add_argument("--gated", action="store_true",
+                    help="wrap --speednet in the confidence gate (models/gate.py)")
     ap.add_argument("--no-ackermann", action="store_true",
                     help="ablation: disable the Ackermann curvature/friction bounds")
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args(argv)
+    if args.gated and not args.speednet:
+        ap.error("--gated requires --speednet")
 
     seed_everything()
     split = splits.load_split()
@@ -139,10 +198,14 @@ def main(argv: list[str] | None = None) -> int:
 
     speed_estimator = None
     if args.speednet:
-        from shadownav.models.inference import SpeedNetEstimator
+        from shadownav.models.inference import GatedSpeedNetEstimator, SpeedNetEstimator
 
-        speed_estimator = SpeedNetEstimator(checkpoint=args.speednet_checkpoint)
-        method += "_speednet"
+        if args.gated:
+            speed_estimator = GatedSpeedNetEstimator(checkpoint=args.speednet_checkpoint)
+            method += "_speednet_gated"
+        else:
+            speed_estimator = SpeedNetEstimator(checkpoint=args.speednet_checkpoint)
+            method += "_speednet"
         print(f"speed front end: {speed_estimator.variant} variant, "
               f"window {speed_estimator.window}")
 
@@ -156,6 +219,10 @@ def main(argv: list[str] | None = None) -> int:
     per_fold: dict[str, list[metrics.OutageResult]] = defaultdict(list)
     n_seq = 0
     aligned_flags: list[bool] = []
+    factors = load_conformal_factors()
+    if factors:
+        print("conformal factors loaded from shared/conformal.json: "
+              + ", ".join(f"{h:.0f}s={v:.1f}" for h, v in sorted(factors.items())))
 
     for path in paths:
         try:
@@ -170,7 +237,7 @@ def main(argv: list[str] | None = None) -> int:
                 break
             n_seq += 1
             rs = evaluate_sequence(seq, split, cfg, method, aligned_flags,
-                                   speed_estimator)
+                                   speed_estimator, factors)
             results.extend(rs)
             per_fold[fold].extend(rs)
 
@@ -199,6 +266,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {fold:<6} " + "  ".join(
                 f"{h:.0f}s={v['crse_median_m']:.1f}" for h, v in fs.items()))
 
+    print("\ntransitions and the ring (medians):")
+    print(f"{'horizon':>8} {'<10% drift':>10} {'detect s':>9} {'snap m':>8} "
+          f"{'max step m':>11} {'settle s':>9} {'resid m':>8} {'ring raw':>9} {'ring cal':>9}")
+    for h, s in summary.items():
+        print(f"{h:>8.0f} {100 * s['share_under_10pct']:>9.1f}% "
+              f"{s['detection_latency_median_s']:>9.2f} {s['reacq_snap_median_m']:>8.1f} "
+              f"{s['reacq_max_step_median_m']:>11.1f} {s['reacq_settle_median_s']:>9.2f} "
+              f"{s['reacq_residual_median_m']:>8.1f} {s['radius90_raw_median_m']:>9.1f} "
+              f"{s['radius90_cal_median_m']:>9.1f}")
+
     # Head-to-head with the committed drift floor.
     floor_path = Path(__file__).resolve().parents[2] / "eval" / "results" / "baseline_naive.json"
     if floor_path.exists():
@@ -209,6 +286,13 @@ def main(argv: list[str] | None = None) -> int:
             if base:
                 print(f"  {h:>5.0f}s  {base:>10.1f} m -> {s['crse_median_m']:>8.1f} m "
                       f"({base / max(s['crse_median_m'], 1e-9):>6.1f}x better)")
+
+    gate = None
+    if args.gated:
+        gate = {"config": dataclasses.asdict(speed_estimator.config),
+                "counts": speed_estimator.diagnostics()}
+        print("\ngate decisions: "
+              + ", ".join(f"{k}={v}" for k, v in gate["counts"].items()))
 
     out = args.out or (
         Path(__file__).resolve().parents[2] / "eval" / "results" / f"{method}.json"
@@ -221,6 +305,7 @@ def main(argv: list[str] | None = None) -> int:
                 "seed": split.seed,
                 "n_sequences": n_seq,
                 "n_outages": len(results),
+                **({"gate": gate} if gate else {}),
                 "summary": {str(k): v for k, v in summary.items()},
                 "per_fold": {
                     f: {str(k): v for k, v in metrics.summarise(rs).items()}
