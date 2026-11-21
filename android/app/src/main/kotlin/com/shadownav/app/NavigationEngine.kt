@@ -231,11 +231,13 @@ class NavigationEngine {
             f.propagate(yawRate, null, dt)
             f.updateAckermann(yawRate)
 
-            // Zero-velocity update. Without this a phone at rest holding a bad
-            // speed from a weak fix dead-reckons away forever: observed on
-            // hardware running at 4.1 m/s on a desk while sigma grew from 24 m
-            // to 33 m. The IMU knew all along.
-            if (atRest) f.updateSpeed(0.0, sigma = 0.05)
+            // Zero-velocity and zero-angular-rate updates during stationary holds.
+            // Without this a phone at rest holding a bad speed dead-reckons away,
+            // and uncompensated gyro bias causes heading drift on restart.
+            if (atRest) {
+                f.updateSpeed(0.0, sigma = 0.05)
+                f.updateZeroAngularRate(yawRate, sigma = 0.001)
+            }
 
             tripDurationS = elapsedS
             if (!lastEast.isNaN()) {

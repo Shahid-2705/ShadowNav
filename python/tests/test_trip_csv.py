@@ -417,6 +417,33 @@ def test_cli_writes_default_output(tmp_path, raw_path, monkeypatch):
     assert json.loads(out.read_text())["method"] == "device_replay"
 
 
+def test_replay_with_modular_map_matching(raw_path):
+    from shadownav.map import osm
+    # Build a simple road network around the synthetic trip's start position
+    blob = {
+        "elements": [
+            {
+                "type": "way",
+                "id": 101,
+                "tags": {"highway": "primary"},
+                "nodes": [1, 2],
+                "geometry": [
+                    {"lat": REF_LAT - 0.01, "lon": REF_LON},
+                    {"lat": REF_LAT + 0.01, "lon": REF_LON + 0.01},
+                ],
+            }
+        ]
+    }
+    net = osm.parse_overpass(blob, name="synth_net")
+    report = replay_trip.replay(raw_path, horizons=(10.0,), osm_network=net)
+    assert report["n_outages"] >= 1
+    # Check that map matching evaluated modularly alongside raw EKF
+    for res in report["results"]:
+        if "map_matched_drift_m" in res:
+            assert isinstance(res["map_matched_drift_m"], float)
+            assert "map_decisions" in res
+
+
 # ------------------------------------------------------- real recordings
 
 

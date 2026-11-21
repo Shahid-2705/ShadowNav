@@ -221,12 +221,13 @@ def _resolve_one(columns: dict[str, frozenset[str]], canonical: str,
 
 def _resolve_time(columns: dict[str, frozenset[str]]) -> tuple[str, str | None]:
     """Return ``(raw column, unit)``; unit is None when it must be inferred."""
+    clean = {raw: toks for raw, toks in columns.items() if not (toks & {"SINCE", "FIX"})}
     for unit, sigs in _TIME_SIGNATURES:
-        raw = _resolve_one(columns, f"time_{unit}", sigs)
+        raw = _resolve_one(clean, f"time_{unit}", sigs)
         if raw is not None:
             return raw, unit
     for sig in _UNITLESS_TIME:
-        exact = [raw for raw, toks in columns.items() if toks == sig]
+        exact = [raw for raw, toks in clean.items() if toks == sig]
         if len(exact) == 1:
             return exact[0], None
     raise TripSchemaError(

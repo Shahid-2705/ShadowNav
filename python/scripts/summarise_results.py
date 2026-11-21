@@ -192,6 +192,32 @@ def main() -> int:
               f"{l['median_ms']:.2f} ms median / {l['p95_ms']:.2f} ms p95 (1 thread)")
         print(f"  projected low-end p95 ~{l['projected_low_end_p95_ms']:.1f} ms "
               f"vs {l['budget_ms']:.0f} ms budget -- PROXY, not on-device")
+
+    # Persist summary.md (winnability-plan item A11)
+    summary_path = RESULTS / "summary.md"
+    try:
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            print("# ShadowNav — Evaluation Summary\n")
+            print("```text")
+            print(head)
+            print("-" * len(head))
+            for label, _, blob, sm in rows:
+                cells = "".join(
+                    f"{sm.get(h, {}).get('crse_median_m', float('nan')):>10.1f}"
+                    if sm.get(h, {}).get('crse_median_m') is not None else f"{'-':>10}"
+                    for h in HORIZONS
+                )
+                print(f"{label:<36}{blob.get('n_sequences', 0):>7}{cells}")
+            print("```\n")
+            print_fair_comparison(rows)
+            print_transitions(rows)
+        summary_path.write_text(buf.getvalue(), encoding="utf-8")
+    except Exception as exc:
+        print(f"warning: failed to write {summary_path}: {exc}")
+
     return 0
 
 

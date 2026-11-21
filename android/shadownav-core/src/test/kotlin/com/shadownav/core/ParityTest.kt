@@ -146,6 +146,33 @@ class ParityTest {
     }
 
     @Test
+    fun `multipath rejection matches python`() {
+        val g = GoldenJson.load("multipath")
+        val init = g.obj("init")
+        val f = KinematicEkf(
+            init.num("east"), init.num("north"), init.num("heading"), init.num("speed"),
+        )
+        for (i in 0 until 10) f.propagate(0.01, null, 0.1)
+        val acc1 = f.updatePosition(0.1, 15.1, cn0Mean = 36.0)
+
+        for (i in 0 until 10) f.propagate(0.01, null, 0.1)
+        val acc2 = f.updatePosition(40.0, 30.0, cn0Mean = 18.0)
+
+        for (i in 0 until 10) f.propagate(0.01, null, 0.1)
+        val acc3 = f.updatePosition(0.2, 45.1, cn0Mean = 35.0)
+
+        val expectedAccepted = g.arr("accepted").map { it as Boolean }
+        assertEquals("step 1 accepted", expectedAccepted[0], acc1)
+        assertEquals("step 2 rejected (multipath)", expectedAccepted[1], acc2)
+        assertEquals("step 3 accepted", expectedAccepted[2], acc3)
+
+        assertArrayClose(g.doubles("state"), f.x, tol, "state")
+        assertArrayClose(g.doubles("cov_diag"), f.cov.diagonal(), 1e-12, "cov diag")
+        assertEquals(g.int("n_gps_accepted"), f.diagnostics.gpsAccepted)
+        assertEquals(g.int("n_gps_rejected"), f.diagnostics.gpsRejected)
+    }
+
+    @Test
     fun `ackermann bounds match python`() {
         val g = GoldenJson.load("ackermann")
         for (row in g.arr("cases")) {

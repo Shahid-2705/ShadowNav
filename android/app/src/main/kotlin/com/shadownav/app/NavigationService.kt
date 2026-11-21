@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.hardware.SensorManager
 import android.location.Location
 import android.os.Binder
@@ -64,7 +65,15 @@ class NavigationService : Service(), SensorCapture.Listener, GnssCapture.Listene
             stopSelf()
             return START_NOT_STICKY
         }
-        startForeground(NOTIFICATION_ID, buildNotification("starting"))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                buildNotification("starting"),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION,
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification("starting"))
+        }
         if (!started) {
             started = true
             sensors.start()

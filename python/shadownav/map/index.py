@@ -115,6 +115,28 @@ class RoadIndex:
             key=lambda c: c.distance_m,
         ))
 
+    def snap_point(self, east: float, north: float, radius_m: float = 50.0) -> tuple[float, float, Candidate] | None:
+        """Snap a position to the nearest valid road segment within radius_m.
+
+        Returns (snapped_east, snapped_north, nearest_candidate) or None if no road within radius.
+        """
+        cands = self.candidates(east, north, radius_m)
+        if not cands:
+            return None
+        cand = cands[0]
+        wi = cand.way_index
+        si = cand.seg_index
+        way = self.ways[wi]
+        e0, n0 = way.east[si], way.north[si]
+        e1, n1 = way.east[si + 1], way.north[si + 1]
+        dx = e1 - e0
+        dy = n1 - n0
+        denom = dx * dx + dy * dy
+        if denom < 1e-9:
+            return float(e0), float(n0), cand
+        t = max(0.0, min(1.0, float(((east - e0) * dx + (north - n0) * dy) / denom)))
+        return float(e0 + t * dx), float(n0 + t * dy), cand
+
     def _candidate(self, way_index: int, seg: int, distance: float, frac: float) -> Candidate:
         way = self.ways[way_index]
         pos = int(self.seg_pos[seg])

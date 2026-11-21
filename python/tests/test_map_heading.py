@@ -313,3 +313,17 @@ def test_constraint_removes_gyro_bias_drift_on_a_straight_road(tmp_path: Path):
     assert cte_free > 10.0, "the injected bias must actually produce drift"
     assert cte_held < 0.25 * cte_free, (cte_free, cte_held)
     assert observer.counts()["applied"] > 100
+
+
+def test_snap_point_projects_onto_road_segment():
+    idx = _index(_east_west_way(1, north_m=50.0, e0=0.0, e1=200.0))
+    # Query point at (100.0, 62.0) -> nearest road is at north=50.0
+    snapped = idx.snap_point(100.0, 62.0, radius_m=30.0)
+    assert snapped is not None
+    se, sn, cand = snapped
+    assert se == pytest.approx(100.0)
+    assert sn == pytest.approx(50.0)
+    assert cand.way_id == 1
+
+    # Query point far away (> 50 m) returns None
+    assert idx.snap_point(100.0, 200.0, radius_m=30.0) is None

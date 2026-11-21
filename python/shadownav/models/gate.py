@@ -150,7 +150,20 @@ class GateState:
 
     @property
     def has_prior(self) -> bool:
-        return math.isfinite(self.prior_ms)
+        return np.isfinite(self.prior_ms)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, GateState):
+            return False
+        prior_equal = (
+            (np.isnan(self.prior_ms) and np.isnan(other.prior_ms))
+            or self.prior_ms == other.prior_ms
+        )
+        return (
+            prior_equal
+            and self.consecutive_rejections == other.consecutive_rejections
+            and self.counts == other.counts
+        )
 
 
 @dataclass(frozen=True)
@@ -179,7 +192,7 @@ def _accept(state: GateState, speed: float, sigma: float, reason: str,
 def gate_step(cfg: GateConfig, state: GateState,
               model_speed: float, model_sigma: float) -> GateDecision:
     """Apply every rule once. Pure: returns a new state, touches nothing."""
-    if not (math.isfinite(model_speed) and math.isfinite(model_sigma)):
+    if not (np.isfinite(model_speed) and np.isfinite(model_sigma)):
         return GateDecision(math.nan, math.nan, "no_opinion",
                             replace(state, counts=state.counts.bump(no_opinion=1)))
     if not cfg.v_min <= model_speed <= cfg.v_max:                    # rule (d)

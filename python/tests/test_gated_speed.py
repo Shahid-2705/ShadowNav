@@ -196,7 +196,7 @@ def test_counts_add_up():
     c = g.counts
     n_rejected = c.rejected_sigma + c.rejected_bound + c.rejected_innovation
     assert c.accepted + n_rejected + c.no_opinion == len(outs)
-    assert sum(np.isnan(emitted)) == n_rejected
+    assert sum(np.isnan(emitted)) == n_rejected + c.no_opinion
     assert c.shrunk <= c.accepted and c.rate_limited <= c.accepted
 
 

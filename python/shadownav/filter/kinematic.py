@@ -199,6 +199,18 @@ class KinematicEKF:
         r = np.array([[(sigma if sigma is not None else self.config.sigma_gps_speed) ** 2]])
         self._update(np.array([speed_ms - self.x[I_V]]), h, r)
 
+    def update_zero_angular_rate(self, gyro_z: float, sigma: float = 0.001) -> None:
+        """Zero Angular Rate Update (ZARU) for continuous gyro bias estimation at rest.
+
+        When stationary, vehicle yaw rate is identically zero. Any measured angular rate
+        about vertical is pure sensor bias b_omega:
+            y = gyro_z - x[I_BW]
+        """
+        h = np.zeros((1, DIM))
+        h[0, I_BW] = 1.0
+        r = np.array([[sigma**2]])
+        self._update(np.array([gyro_z - self.x[I_BW]]), h, r)
+
     def update_course(self, course_rad: float, sigma: float | None = None) -> None:
         """Heading from GNSS course over ground. Ignored at low speed."""
         if self.x[I_V] < self.config.min_speed_for_course:

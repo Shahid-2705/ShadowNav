@@ -106,6 +106,42 @@ def test_chi_square_gate_rejects_a_wild_fix():
     assert f.diagnostics.n_gps_rejected == 1
 
 
+def test_multipath_spike_rejection_and_recovery():
+    """Multipath jump with degraded C/N0 is rejected, leaving the inertial trajectory intact."""
+    f = KinematicEKF(0.0, 0.0, 0.0, 15.0)
+    # Travel north for 1.0 s (10 steps @ 0.1 s) -> north should be ~15.0 m
+    for _ in range(10):
+        f.propagate(0.0, None, 0.1)
+    assert f.position[1] == pytest.approx(15.0, abs=1e-5)
+
+    # Good fix at t=1.0s with healthy C/N0=36 dB-Hz
+    accepted = f.update_position(np.array([0.1, 15.1]), cn0_mean=36.0)
+    assert accepted
+    assert f.diagnostics.n_gps_accepted == 1
+
+    # Travel north for another 1.0 s -> north ~30.0 m
+    for _ in range(10):
+        f.propagate(0.0, None, 0.1)
+
+    # Multipath reflection jumps 40 m east into a building, C/N0 drops to 18 dB-Hz
+    multipath_pos = np.array([40.0, 30.0])
+    rejected = f.update_position(multipath_pos, cn0_mean=18.0)
+    assert not rejected
+    assert f.diagnostics.n_gps_rejected == 1
+    # Filter position must not be pulled to the 40 m spike
+    assert abs(f.position[0]) < 2.0
+    assert f.position[1] == pytest.approx(30.0, abs=1.0)
+
+    # Next clean fix arrives at t=3.0 s (north ~45 m, C/N0=35 dB-Hz)
+    for _ in range(10):
+        f.propagate(0.0, None, 0.1)
+    clean_pos = np.array([0.0, 45.0])
+    recovered = f.update_position(clean_pos, cn0_mean=35.0)
+    assert recovered
+    assert f.diagnostics.n_gps_accepted == 2
+    assert f.diagnostics.consecutive_rejections == 0
+
+
 def test_persistent_rejection_triggers_a_reanchor_rather_than_lockout():
     """A diverged filter must not reject every fix forever.
 
@@ -117,6 +153,18 @@ def test_persistent_rejection_triggers_a_reanchor_rather_than_lockout():
         f.update_position(np.array([5000.0, 5000.0]))
     assert f.diagnostics.n_gate_overrides == 1
     assert f.position[0] == pytest.approx(5000.0)
+
+
+def test_zero_angular_rate_update_estimates_gyro_bias_at_rest():
+    """ZARU during stationary holds directly estimates and zeros gyro bias."""
+    f = KinematicEKF(0.0, 0.0, 0.0, 0.0)
+    assert f.x[4] == pytest.approx(0.0)  # I_BW initially 0
+    # True gyro bias is +0.025 rad/s; sensor measures 0.025 at rest
+    for _ in range(10):
+        f.propagate(0.025, None, 0.1)
+        f.update_zero_angular_rate(0.025, sigma=0.001)
+    assert f.x[4] == pytest.approx(0.025, abs=1e-3)
+    assert f.cov[4, 4] < 1e-4
 
 
 def test_course_update_is_ignored_at_standstill():

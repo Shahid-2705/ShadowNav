@@ -1,0 +1,30 @@
+{
+  "description": "multipath spike rejection with C/N0 weighting and recovery",
+  "init": {
+    "east": 0.0,
+    "north": 0.0,
+    "heading": 0.0,
+    "speed": 15.0
+  },
+  "accepted": [
+    true,
+    false,
+    true
+  ],
+  "state": [
+    -0.017753585192,
+    45.088002415902,
+    -0.018734024885,
+    15.008242947333,
+    8.3340554e-05
+  ],
+  "cov_diag": [
+    11.065653552104,
+    9.402487542663,
+    0.010475908837,
+    1.691078703133,
+    9.9311876e-05
+  ],
+  "n_gps_accepted": 2,
+  "n_gps_rejected": 1
+}

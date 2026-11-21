@@ -121,6 +121,17 @@ class KinematicEkf(
         update(doubleArrayOf(speedMs - x[I_V]), h, Mat(1, 1, doubleArrayOf(sigma * sigma)))
     }
 
+    /**
+     * Zero Angular Rate Update (ZARU) for continuous gyro bias estimation at rest.
+     * When stationary, vehicle yaw rate is 0. Any measured angular rate about vertical is pure bias:
+     * `y = gyroZ - x[I_BW]`.
+     */
+    fun updateZeroAngularRate(gyroZ: Double, sigma: Double = 0.001) {
+        val h = Mat(1, DIM)
+        h[0, I_BW] = 1.0
+        update(doubleArrayOf(gyroZ - x[I_BW]), h, Mat(1, 1, doubleArrayOf(sigma * sigma)))
+    }
+
     /** Heading from GNSS course. Ignored at low speed, where a receiver
      *  reports an essentially random course. */
     fun updateCourse(courseRad: Double, sigma: Double = config.sigmaGpsCourse) {

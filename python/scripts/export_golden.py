@@ -125,6 +125,29 @@ def case_gate_escape() -> dict:
     }
 
 
+def case_multipath() -> dict:
+    """Multipath rejection with C/N0 de-weighting and subsequent recovery."""
+    f = KinematicEKF(0.0, 0.0, 0.0, 15.0)
+    for _ in range(10):
+        f.propagate(0.01, None, 0.1)
+    acc1 = bool(f.update_position(np.array([0.1, 15.1]), cn0_mean=36.0))
+    for _ in range(10):
+        f.propagate(0.01, None, 0.1)
+    acc2 = bool(f.update_position(np.array([40.0, 30.0]), cn0_mean=18.0))
+    for _ in range(10):
+        f.propagate(0.01, None, 0.1)
+    acc3 = bool(f.update_position(np.array([0.2, 45.1]), cn0_mean=35.0))
+    return {
+        "description": "multipath spike rejection with C/N0 weighting and recovery",
+        "init": {"east": 0.0, "north": 0.0, "heading": 0.0, "speed": 15.0},
+        "accepted": [acc1, acc2, acc3],
+        "state": rnd(f.x),
+        "cov_diag": rnd(np.diag(f.cov)),
+        "n_gps_accepted": f.diagnostics.n_gps_accepted,
+        "n_gps_rejected": f.diagnostics.n_gps_rejected,
+    }
+
+
 def case_ackermann() -> dict:
     rows = []
     for speed, gyro in [(0.2, 0.5), (20.0, 0.5), (40.0, 0.5),
@@ -192,6 +215,7 @@ def main() -> int:
         "propagate_accel": case_propagate_with_accel(),
         "updates": case_updates(),
         "gate_escape": case_gate_escape(),
+        "multipath": case_multipath(),
         "ackermann": case_ackermann(),
         "blend": case_blend(),
         "alignment": case_alignment(),
